@@ -6,7 +6,7 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 
 ---
 
-## Pass 1 — Scaffold + Schema (bước 1–2) ✅ XONG
+## Pass 1 — Scaffold + Schema (bước 1–2) — ✅ Code + schema XONG · ⏳ verify treo (chưa `npm install`)
 
 ### Bước 1 — Setup Next.js + Tailwind + Shadcn
 - [x] `create-next-app` (App Router, TS, Tailwind v4, ESLint, no `src/`, alias `@/*`) — Next 16 + React 19
@@ -30,10 +30,12 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 - [x] `README.md` — overview + cách chạy
 
 ### Verify Pass 1
-- [x] `npm run lint` sạch
-- [x] `npm run build` sạch (TypeScript pass)
+- [ ] `npm install` — `node_modules` chưa có trong workspace, nên lint/build hiện không chạy được
+      (`'next' is not recognized`)
+- [~] `npm run lint` sạch — đã pass lúc viết Pass 1; chạy lại sau `npm install` để xác nhận
+- [~] `npm run build` sạch (TypeScript pass) — như trên
 - [x] Review SQL: mọi bảng riêng tư có RLS; `vector(768)` + HNSW; trigger populate `display_name`
-- [ ] (Tùy chọn) Apply migrations lên Supabase thật — cần key (blocker user)
+- [ ] Apply 5 migrations lên Supabase thật — key đã có trong `.env.local`, làm được ngay
 
 ---
 
@@ -47,20 +49,23 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 ### Bước 4 — Parser Markdown/Callout
 - [ ] Module thuần túy `parseLesson(md) -> { frontmatter, content, questions[] }`
 - [ ] Test độc lập trước khi nối webhook
+- Deps còn thiếu: test runner (chưa cài gì) + thư viện parse frontmatter
 
 ### Bước 5 — `/api/sync` + GitHub Webhook
-- [ ] Verify HMAC `GITHUB_WEBHOOK_SECRET`
+- [ ] Verify HMAC `GITHUB_WEBHOOK_SECRET` — ⚠️ secret hiện tại chỉ 5 ký tự, phải thay trước (xem blocker)
 - [ ] Đọc file .md trong diff qua GitHub API
 - [ ] Upsert `lessons` / `questions` (service-role)
 
 ### Bước 6 — Lessons UI
 - [ ] `/lessons` (list + tab lọc Tuần/Chủ đề + checkbox Đã học)
 - [ ] `/lessons/[slug]` (render markdown + sidebar chat + câu hỏi tự luận)
+- Deps còn thiếu: thư viện render markdown. Shadcn mới có mỗi `button.tsx` — cần thêm component khi làm
 
 ### Bước 7 — AI chấm điểm
 - [ ] `generateObject` schema `{ score, missing_points[], comment }`
 - [ ] Lưu `quiz_attempts` + upsert `daily_activity`
 - [!] **Chốt model chat ID** (spec: `gemini-2.5-pro`/`gemini-2.0-flash`)
+- Deps còn thiếu (chung với bước 8): `ai` + `@ai-sdk/google`
 
 ### Bước 8 — Socratic Chatbot
 - [ ] `streamText`, sidebar cạnh lý thuyết
@@ -87,6 +92,7 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 - [ ] BarChart câu hỏi theo tuần (Tremor)
 - [ ] % hoàn thành bài học
 - [ ] Leaderboard (từ `leaderboard_view`)
+- Deps còn thiếu: Tremor (hoặc Recharts)
 
 ### Bước 13 — `/admin/invite`
 - [ ] Chỉ admin (`ADMIN_EMAIL`), thêm email thành viên
@@ -98,6 +104,9 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 ---
 
 ## Việc cần user (blocker)
-- [!] Cung cấp API key thật cho LÕI: Supabase, Gemini, GitHub webhook — khi muốn test live
+- [x] Key LÕI đã có trong `.env.local`: Supabase (URL/anon/service-role), Gemini,
+      GitHub webhook secret, `ADMIN_EMAIL` — hết blocker này
+- [!] `GITHUB_WEBHOOK_SECRET` hiện chỉ 5 ký tự — quá yếu cho HMAC. Thay bằng chuỗi ngẫu nhiên
+      32+ ký tự (và cập nhật cả webhook trên GitHub) trước bước 5
 - [!] Chốt model AI Gemini (chat/grading) trước Pass build AI
 - (HOÃN cùng RAG) R2 keys + embedding model — chỉ cần khi làm RAG sau này
