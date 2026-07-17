@@ -6,7 +6,7 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 
 ---
 
-## Pass 1 — Scaffold + Schema (bước 1–2) — ✅ Code + schema XONG · lint/build đã verify
+## Pass 1 — Scaffold + Schema (bước 1–2) — ✅ XONG THẬT (đã apply + verify trên Supabase live)
 
 ### Bước 1 — Setup Next.js + Tailwind + Shadcn
 - [x] `create-next-app` (App Router, TS, Tailwind v4, ESLint, no `src/`, alias `@/*`) — Next 16 + React 19
@@ -36,9 +36,11 @@ Cập nhật file này mỗi khi hoàn thành một mục.
       sót lại ở `.claude/worktrees/` làm ESLint báo 20211 vấn đề không thuộc dự án
 - [x] `npm run build` sạch (exit 0) — Next 16.2.10 Turbopack, 4 trang static
 - [x] Review SQL: mọi bảng riêng tư có RLS; `vector(768)` + HNSW; trigger populate `display_name`
-- [~] Apply 5 migrations lên Supabase thật — SQL đã ghép sẵn, chờ chạy qua SQL Editor.
-      **Chặn bởi:** `NEXT_PUBLIC_SUPABASE_URL` trong `.env.local` đang chứa `sb_publishable_*` chứ
-      không phải URL → chưa verify được kết quả
+- [x] Apply 5 migrations lên Supabase thật (chạy qua SQL Editor) — đã verify bằng REST:
+      9 bảng + `leaderboard_view` đều tồn tại (10/10)
+- [x] Verify RLS chạy thật: dùng anon key chưa đăng nhập → đọc mọi bảng riêng tư ra 0 dòng,
+      ghi `quiz_attempts` bị chặn 401 ("new row violates row-level security policy")
+- [x] Verify `.env.local` đúng: `supabase-js` `createClient()` query được bảng `lessons`
 
 ---
 
@@ -110,7 +112,7 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 - [x] Key LÕI đã có trong `.env.local`: Supabase (URL/anon/service-role), Gemini,
       GitHub webhook secret, `ADMIN_EMAIL` — hết blocker này
 - [x] `GITHUB_WEBHOOK_SECRET` đã thay bằng chuỗi 37 ký tự — đủ mạnh cho HMAC ở bước 5
-- [!] **`NEXT_PUBLIC_SUPABASE_URL` đang sai**: chứa `sb_publishable_*` thay vì
-      `https://<project-ref>.supabase.co`. Sửa trước khi chạy app hoặc verify DB
+- [x] `NEXT_PUBLIC_SUPABASE_URL` đã đúng dạng `https://<project-ref>.supabase.co`
+      (lưu ý: supabase-js cần origin trần, KHÔNG kèm đuôi `/rest/v1/`)
 - [!] Chốt model AI Gemini (chat/grading) trước Pass build AI
 - (HOÃN cùng RAG) R2 keys + embedding model — chỉ cần khi làm RAG sau này
