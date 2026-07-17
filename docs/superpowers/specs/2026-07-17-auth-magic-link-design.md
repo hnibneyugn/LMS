@@ -119,6 +119,18 @@ Không có test framework (bước 4 mới thêm), nên verify bằng luồng th
 - **Cookie không được ghi**: `updateSession` phải trả đúng object `NextResponse` mà nó đã gắn cookie
   vào; tạo response mới sau khi set cookie sẽ làm mất session một cách âm thầm — đăng nhập xong vẫn
   bị đá về `/login`. Bước verify 5 bắt được.
-- **URL redirect của Magic Link**: Supabase chỉ chấp nhận redirect tới URL nằm trong danh sách cho
-  phép. `http://localhost:3000/**` cần có trong Authentication → URL Configuration, nếu không link
-  trong mail sẽ đưa về sai chỗ. Khi deploy (bước 14) phải thêm domain Vercel.
+- **URL redirect của Magic Link**: **không cần** thêm gì cho môi trường dev nếu Site URL đã là
+  `http://localhost:3000`. Kiểm chứng bằng mã nguồn GoTrue (`internal/utilities/request.go`,
+  `IsRedirectURLValid`): một redirect được chấp nhận khi **scheme + hostname + port** khớp Site URL
+  — **path không hề được kiểm tra**. Nên Site URL `http://localhost:3000` tự động cho phép
+  `http://localhost:3000/auth/callback`. (Với hostname loopback, GoTrue còn bỏ qua cả check port
+  theo RFC 8252 §7.3.) Danh sách `URIAllowList` chỉ được duyệt tới khi origin **không** khớp Site URL.
+
+  **Cạm bẫy ở bước 14 (deploy)**: Site URL chỉ có một giá trị. Khi đổi Site URL sang domain Vercel,
+  `localhost:3000` hết khớp → lúc đó mới **bắt buộc** thêm `http://localhost:3000/**` vào
+  Redirect URLs, nếu không dev ở máy sẽ gãy.
+
+- **Kiểu hỏng khi redirect không hợp lệ là im lặng**: `GetReferrer` không báo lỗi mà trả về Site URL.
+  Magic link sẽ đưa về `/?code=...` thay vì `/auth/callback?code=...`; không route nào đổi code lấy
+  session → user bị middleware đá về `/login` mà không có thông báo gì. Nếu thấy triệu chứng "bấm
+  link xong quay lại trang đăng nhập", nghi ngay chỗ này.
