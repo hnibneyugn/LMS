@@ -6,7 +6,7 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 
 ---
 
-## Pass 1 — Scaffold + Schema (bước 1–2) — ✅ Code + schema XONG · ⏳ verify treo (chưa `npm install`)
+## Pass 1 — Scaffold + Schema (bước 1–2) — ✅ Code + schema XONG · lint/build đã verify
 
 ### Bước 1 — Setup Next.js + Tailwind + Shadcn
 - [x] `create-next-app` (App Router, TS, Tailwind v4, ESLint, no `src/`, alias `@/*`) — Next 16 + React 19
@@ -30,12 +30,15 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 - [x] `README.md` — overview + cách chạy
 
 ### Verify Pass 1
-- [ ] `npm install` — `node_modules` chưa có trong workspace, nên lint/build hiện không chạy được
-      (`'next' is not recognized`)
-- [~] `npm run lint` sạch — đã pass lúc viết Pass 1; chạy lại sau `npm install` để xác nhận
-- [~] `npm run build` sạch (TypeScript pass) — như trên
+- [x] `npm install` — 233 packages, có warning: 2 moderate vulnerabilities + 2 gói cần install script
+      (`sharp`, `unrs-resolver`) chưa approve
+- [x] `npm run lint` sạch (exit 0) — cần sửa `eslint.config.mjs` bỏ qua `.claude/**` trước, vì worktree
+      sót lại ở `.claude/worktrees/` làm ESLint báo 20211 vấn đề không thuộc dự án
+- [x] `npm run build` sạch (exit 0) — Next 16.2.10 Turbopack, 4 trang static
 - [x] Review SQL: mọi bảng riêng tư có RLS; `vector(768)` + HNSW; trigger populate `display_name`
-- [ ] Apply 5 migrations lên Supabase thật — key đã có trong `.env.local`, làm được ngay
+- [~] Apply 5 migrations lên Supabase thật — SQL đã ghép sẵn, chờ chạy qua SQL Editor.
+      **Chặn bởi:** `NEXT_PUBLIC_SUPABASE_URL` trong `.env.local` đang chứa `sb_publishable_*` chứ
+      không phải URL → chưa verify được kết quả
 
 ---
 
@@ -52,7 +55,7 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 - Deps còn thiếu: test runner (chưa cài gì) + thư viện parse frontmatter
 
 ### Bước 5 — `/api/sync` + GitHub Webhook
-- [ ] Verify HMAC `GITHUB_WEBHOOK_SECRET` — ⚠️ secret hiện tại chỉ 5 ký tự, phải thay trước (xem blocker)
+- [ ] Verify HMAC `GITHUB_WEBHOOK_SECRET` (secret đã đủ mạnh, sẵn sàng dùng)
 - [ ] Đọc file .md trong diff qua GitHub API
 - [ ] Upsert `lessons` / `questions` (service-role)
 
@@ -106,7 +109,8 @@ Cập nhật file này mỗi khi hoàn thành một mục.
 ## Việc cần user (blocker)
 - [x] Key LÕI đã có trong `.env.local`: Supabase (URL/anon/service-role), Gemini,
       GitHub webhook secret, `ADMIN_EMAIL` — hết blocker này
-- [!] `GITHUB_WEBHOOK_SECRET` hiện chỉ 5 ký tự — quá yếu cho HMAC. Thay bằng chuỗi ngẫu nhiên
-      32+ ký tự (và cập nhật cả webhook trên GitHub) trước bước 5
+- [x] `GITHUB_WEBHOOK_SECRET` đã thay bằng chuỗi 37 ký tự — đủ mạnh cho HMAC ở bước 5
+- [!] **`NEXT_PUBLIC_SUPABASE_URL` đang sai**: chứa `sb_publishable_*` thay vì
+      `https://<project-ref>.supabase.co`. Sửa trước khi chạy app hoặc verify DB
 - [!] Chốt model AI Gemini (chat/grading) trước Pass build AI
 - (HOÃN cùng RAG) R2 keys + embedding model — chỉ cần khi làm RAG sau này
