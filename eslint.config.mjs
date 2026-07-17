@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Git worktrees created by tooling hold a full copy of the repo; linting them
+    // reports thousands of duplicate problems from code we do not own here.
+    ".claude/**",
   ]),
 ]);
 
