@@ -90,12 +90,14 @@ Ranh giới: hai bên **không share code**, chỉ share hợp đồng REST. Ali
 
 ## Module quan trọng
 
-### Markdown/Callout Parser (chưa làm — sub-project #1)
+### Markdown Parser (chưa làm — nằm trong sub-project #2)
 - Module **Python thuần túy, độc lập** với webhook: `input: markdown string` → `output:
-  { frontmatter, content, questions[] }` (dict/Pydantic model).
-- Frontmatter qua `python-frontmatter` (`title`, `week`, `topic`).
-- Callout: quét block `> [!type]`, chỉ nhận type có trong `backend/app/config/callout_types.py`
-  (`QUESTION_TYPES`).
+  { title, topic, content_md }` (Pydantic model).
+- Frontmatter qua `python-frontmatter`: `title` bắt buộc (thiếu → `LessonParseError`),
+  `topic` tuỳ chọn. **Không** đọc `week` (D14).
+- Parser **không** sinh ra câu hỏi. Câu hỏi do AI sinh riêng từng user ở #4a (D13) —
+  cú pháp callout `> [!type]` đã bỏ.
+- `callout_types.py` giữ lại nhưng đổi vai trò: enum ép AI chọn `type` khi sinh câu hỏi.
 - Không có đáp án mẫu — AI chấm dựa trên toàn bộ `lesson.content_md`.
 
 ## Ranh giới bảo mật

@@ -48,20 +48,31 @@ Spec/plan: `docs/superpowers/{specs,plans}/2026-07-18-foundation-auth*`
 
 ## Sub-project còn lại
 
-### #1 — Parser Markdown/Callout
-- [ ] Module Python thuần túy `parse_lesson(md) -> { frontmatter, content, questions[] }`
-- [ ] Test độc lập trước khi nối webhook (`python-frontmatter` + custom callout scanner)
-- [ ] Chỉ nhận type có trong `backend/app/config/callout_types.py`
+### ~~#1 — Parser Markdown/Callout~~ → GỘP VÀO #2 (2026-07-18, xem D13)
+Câu hỏi không còn parse từ callout nữa mà do AI sinh (D13), nên parser rút xuống còn
+frontmatter + content — quá nhỏ để làm sub-project riêng. Chuyển sang #2.
 
-### #2 — `/api/sync` + GitHub Webhook
+### #2 — `/api/sync` + GitHub Webhook (bao gồm parser)
+- [ ] Module Python thuần túy `parse_lesson(md) -> { title, topic, content_md }`
+      (`python-frontmatter`; thiếu `title` → raise `LessonParseError`; **không** đọc `week`, D14)
+- [ ] Test parser độc lập bằng pytest trước khi nối webhook
 - [ ] Verify HMAC `X-Hub-Signature-256` với `GITHUB_WEBHOOK_SECRET` (secret đã có, đủ mạnh)
 - [ ] Đọc file `.md` trong diff qua GitHub API
-- [ ] Upsert `lessons` / `questions` (service-role)
+- [ ] Upsert `lessons` (service-role). **Không** upsert `questions` — xem #4a
 
 ### #3 — Lessons UI
-- [ ] `/lessons` (list + tab lọc Tuần/Chủ đề + checkbox Đã học → `lesson_progress`)
+- [ ] `/lessons` (list + tab lọc Chủ đề + checkbox Đã học → `lesson_progress`)
 - [ ] `/lessons/:slug` (render markdown + sidebar chat + câu hỏi tự luận)
 - Deps còn thiếu: thư viện render markdown; thêm Shadcn component khi cần
+
+### #4a — Sinh câu hỏi bằng AI (MỚI, thay cho parse callout — D13)
+- [ ] Migration `0006`: thêm `questions.user_id` + RLS `auth.uid() = user_id`
+      (bảng đang là dùng chung, không có `user_id`)
+- [ ] Đổi vai trò `backend/app/config/callout_types.py`: từ whitelist parser → enum ép AI chọn
+      khi sinh câu hỏi (structured output). Cột `type` + CHECK constraint giữ nguyên.
+- [ ] Sinh câu hỏi **riêng từng user** khi user mở bài, context = nguyên `lessons.content_md`
+      (KHÔNG dùng RAG — bài học đủ nhỏ để nhét cả vào prompt)
+- [!] Phụ thuộc: chốt model chat ID
 
 ### #4 — AI chấm điểm
 - [ ] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
@@ -75,7 +86,10 @@ Spec/plan: `docs/superpowers/{specs,plans}/2026-07-18-foundation-auth*`
 
 ### #6 — Dashboard
 - [ ] Streak (từ `daily_activity`), BarChart câu hỏi theo tuần
-- [ ] % hoàn thành bài học, Leaderboard (từ `leaderboard_view`)
+- [ ] % hoàn thành bài học
+- [ ] Leaderboard xếp theo **số ngày học** (count distinct `daily_activity.activity_date`),
+      không xếp theo điểm — cần sửa `leaderboard_view` (migration mới). Xếp theo **giờ học**
+      tạm hoãn: web không có cách đo thời gian đáng tin (heartbeat, tab bỏ quên) — xem D15
 - [ ] Thay Home placeholder bằng dashboard thật (kèm logout tử tế)
 - Deps còn thiếu: Tremor (hoặc Recharts)
 
