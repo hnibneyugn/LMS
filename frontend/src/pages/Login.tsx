@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Navigate } from "react-router-dom"
+import { Navigate, useSearchParams } from "react-router-dom"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ export function Login() {
   const [message, setMessage] = useState("")
   const [checking, setChecking] = useState(true)
   const [hasSession, setHasSession] = useState(false)
+  const [searchParams] = useSearchParams()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -18,29 +19,49 @@ export function Login() {
     })
   }, [])
 
+  // Surface an error handed back by /auth/callback (e.g. an expired/used link).
+  useEffect(() => {
+    const err = searchParams.get("error")
+    if (!err) return
+    setState("error")
+    setMessage(
+      err === "invalid_code"
+        ? "Link đăng nhập đã hết hạn hoặc đã được dùng. Xin link mới."
+        : "Không đăng nhập được. Xin link mới.",
+    )
+  }, [searchParams])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (error) {
-      // Log the real error code to verify the mapping (spec §6) before trusting it.
-      console.error("signInWithOtp", error.status, error.code, error.message)
-      setState("error")
-      if (error.status === 422 || error.code === "otp_disabled") {
-        setMessage("Email này chưa được mời vào hệ thống.")
-      } else if (error.status === 429) {
-        setMessage("Bạn thử lại quá nhiều lần. Đợi một phút rồi thử lại.")
-      } else {
-        setMessage(`Không gửi được link đăng nhập. ${error.message}`)
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      if (error) {
+        // Log the real error code to verify the mapping (spec §6) before trusting it.
+        console.error("signInWithOtp", error.status, error.code, error.message)
+        setState("error")
+        if (error.status === 422 || error.code === "otp_disabled") {
+          setMessage("Email này chưa được mời vào hệ thống.")
+        } else if (error.status === 429) {
+          setMessage("Bạn thử lại quá nhiều lần. Đợi một phút rồi thử lại.")
+        } else {
+          setMessage(`Không gửi được link đăng nhập. ${error.message}`)
+        }
+        return
       }
-      return
+      setState("sent")
+    } catch (err) {
+      // signInWithOtp normally resolves with { error }, but a network-layer throw
+      // must not leave the button in limbo with no feedback.
+      console.error("signInWithOtp threw", err)
+      setState("error")
+      setMessage("Không gửi được link đăng nhập. Vui lòng thử lại.")
     }
-    setState("sent")
   }
 
   if (checking) return null
