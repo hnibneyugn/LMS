@@ -316,7 +316,7 @@ class CurrentUser:
 def _decode(token: str) -> dict:
     secret = os.environ.get("SUPABASE_JWT_SECRET")
     if not secret:
-        # Cấu hình thiếu là lỗi server, không phải lỗi client.
+        # Missing config is a server error, not a client error.
         raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET is not configured")
     try:
         return jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
@@ -447,7 +447,7 @@ if (!url || !anonKey) {
   throw new Error("Thiếu VITE_SUPABASE_URL hoặc VITE_SUPABASE_ANON_KEY")
 }
 
-// detectSessionInUrl (mặc định true) xử lý magic-link callback; persistSession giữ session qua F5.
+// detectSessionInUrl (default true) handles the magic-link callback; persistSession keeps the session across reloads.
 export const supabase = createClient(url, anonKey)
 ```
 
@@ -457,7 +457,7 @@ import { supabase } from "./supabase"
 
 const BASE = import.meta.env.VITE_API_BASE_URL as string
 
-/** Gọi backend FastAPI, tự gắn Bearer token từ session Supabase. */
+/** Call the FastAPI backend, attaching the Bearer token from the Supabase session. */
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -474,7 +474,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
 Create `frontend/src/lib/database.types.ts` — copy nội dung từ file cũ đã xoá. Nếu không còn bản cũ, dùng nội dung tối thiểu sau (mở rộng ở sub-project sau):
 ```ts
-// Generated/maintained to match supabase/migrations. Mở rộng khi build feature dùng bảng tương ứng.
+// Generated/maintained to match supabase/migrations. Expand when building features that use the relevant tables.
 export type Database = Record<string, unknown>
 ```
 
@@ -588,7 +588,7 @@ export function Login() {
       },
     })
     if (error) {
-      // Log mã lỗi thật để xác minh mapping (spec §6) trước khi tin giá trị.
+      // Log the real error code to verify the mapping (spec §6) before trusting it.
       console.error("signInWithOtp", error.status, error.code, error.message)
       setState("error")
       if (error.status === 422 || error.code === "otp_disabled") {
@@ -645,14 +645,14 @@ export function AuthCallback() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // supabase-js (detectSessionInUrl) đổi token trên URL thành session khi load.
+    // supabase-js (detectSessionInUrl) exchanges the URL token for a session on load.
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       if (session) navigate("/", { replace: true })
     })
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) navigate("/", { replace: true })
     })
-    // Không có session sau vài giây ⇒ link hỏng/hết hạn.
+    // No session after a few seconds => the link is broken/expired.
     const timer = setTimeout(() => {
       supabase.auth.getSession().then(({ data }) => {
         if (!data.session) navigate("/login?error=invalid_code", { replace: true })
