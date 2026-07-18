@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-SECRET = "test-secret-for-hs256"
+SECRET = "test-secret-for-hs256-at-least-32-bytes-long"
 client = TestClient(app)
 
 
@@ -28,13 +28,23 @@ def test_me_with_malformed_header_is_401():
 
 
 def test_me_with_invalid_signature_is_401():
-    bad = jwt.encode({"sub": "u1", "aud": "authenticated"}, "wrong-secret", algorithm="HS256")
+    bad = jwt.encode(
+        {"sub": "u1", "aud": "authenticated"},
+        "a-different-wrong-secret-at-least-32-bytes",
+        algorithm="HS256",
+    )
     res = client.get("/api/me", headers={"Authorization": f"Bearer {bad}"})
     assert res.status_code == 401
 
 
 def test_me_with_wrong_audience_is_401():
     tok = _token({"sub": "u1", "email": "a@b.c", "aud": "anon"})
+    res = client.get("/api/me", headers={"Authorization": f"Bearer {tok}"})
+    assert res.status_code == 401
+
+
+def test_me_with_expired_token_is_401():
+    tok = _token({"sub": "u1", "email": "a@b.c", "aud": "authenticated", "exp": 0})
     res = client.get("/api/me", headers={"Authorization": f"Bearer {tok}"})
     assert res.status_code == 401
 

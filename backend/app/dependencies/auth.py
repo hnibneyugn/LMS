@@ -15,13 +15,16 @@ def _decode(token: str) -> dict:
     secret = os.environ.get("SUPABASE_JWT_SECRET")
     if not secret:
         # Missing config is a server error, not a client error.
-        raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="SUPABASE_JWT_SECRET is not configured",
+        )
     try:
         return jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as err:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
-        )
+        ) from err
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:
