@@ -8,7 +8,7 @@ Hướng dẫn cho Claude khi làm việc trên codebase này. Đọc file này 
 Personal LMS (Learning Management System) cho nhóm nhỏ **< 10 người** (invite-only, không public).
 Nội dung học viết bằng Markdown trong Obsidian Vault của admin → auto-sync lên web. Người dùng học
 lý thuyết, làm bài tự luận, được AI chấm điểm + phản biện (Socratic), upload tài liệu cá nhân làm
-ngữ cảnh RAG.
+ngữ cảnh RAG (RAG đang hoãn — xem D8 trong `project_context.md`).
 
 ## Nguyên tắc thiết kế (BẤT BIẾN)
 
@@ -18,7 +18,7 @@ ngữ cảnh RAG.
 3. **Ngôn ngữ**: nội dung hiển thị cho user = **tiếng Việt**; code, tên bảng/cột/biến, comment kỹ
    thuật, commit = **tiếng Anh**.
 4. **Graceful degradation** — một file/tác vụ AI lỗi KHÔNG được làm sập cả pipeline. Luôn try/catch,
-   cập nhật trạng thái lỗi, cho phép retry.
+   cập nhật trạng thái lỗi, cho phép retry. Không nuốt lỗi âm thầm.
 5. **Không dùng NoSQL** — mọi thứ (kể cả vector, dữ liệu bán cấu trúc) lưu trong Postgres
    (`jsonb` + `pgvector`).
 
@@ -26,60 +26,99 @@ ngữ cảnh RAG.
 
 | Lớp | Công nghệ |
 |---|---|
-| Framework | Next.js 14+ App Router, TypeScript |
+| Frontend | React + **Vite** + React Router (SPA thuần, không SSR), TypeScript |
 | UI | Tailwind CSS, Shadcn UI |
 | Charts | Tremor (ưu tiên) / Recharts |
+| Backend | **Python + FastAPI**, đóng gói Docker |
 | Database | Supabase (Postgres) + extension `pgvector` |
-| File storage | Cloudflare R2 (S3-compatible) — **KHÔNG dùng Supabase Storage** |
+| File storage | Cloudflare R2 (S3-compatible qua `boto3`) — **KHÔNG dùng Supabase Storage** |
 | Auth | Supabase Auth — Magic Link (email OTP), invite-only |
-| AI | Google Gemini qua Vercel AI SDK (`@ai-sdk/google`) |
-| Sync | GitHub Webhook → `/api/sync` |
-| Hosting | Vercel (Hobby/Free) |
+| AI | Google Gemini qua Python SDK `google-genai` |
+| Sync | GitHub Webhook → `POST /api/sync` (FastAPI) |
+| Hosting | Frontend: Vercel (static build) · Backend: Koyeb (Docker) |
 
 > **Model IDs (chat + embedding) — TẠM HOÃN.** Sẽ chốt khi build feature AI. Xem `check_list.md`.
 
 ## Cấu trúc thư mục
 
-Code chia làm 2 nửa **client/** và **server/**. Riêng `app/` (routes) BẮT BUỘC ở gốc — Next.js
-App Router chỉ nhận `app/` ở root hoặc `src/app/`, không cho nằm trong `client/`. Nên `app/` giữ
-routes mỏng, gọi sang `client/` (UI) và `server/` (logic).
+Một repo, hai nửa tách biệt, giao tiếp qua REST API.
 
 ```
-app/                        # Next.js App Router — routes + API routes (thin, ở gốc)
-client/                     # Mọi thứ chạy phía browser / UI
-  components/ui/            # Shadcn components (shadcn add đổ vào đây)
-  lib/utils.ts             # cn()
-  supabase/client.ts       # Browser Supabase client (anon key, RLS)
-server/                     # Server-only + domain types/config dùng chung
-  supabase/server.ts       # Server client (cookies, anon key)
-  supabase/admin.ts        # Service-role client (server-only, webhook)
-  config/callout-types.ts  # Whitelist QUESTION_TYPES — single source of truth
-  types/database.types.ts  # Type khớp DB schema
-  (sau: parser/, ai/, rag/, db/ ...)
-supabase/
-  migrations/              # SQL migrations (nguồn chân lý của schema)
+frontend/                   # React SPA (Vite)
+  src/
+    main.tsx  App.tsx       # entry + router
+    lib/      supabase.ts   # browser client (anon key, RLS)
+              api.ts        # apiFetch() — tự gắn Authorization: Bearer
+              utils.ts      # cn()
+    components/ ui/         # Shadcn components
+                ProtectedRoute.tsx
+    pages/                  # Login, AuthCallback, Home (sau: Lessons, Dashboard...)
+  .env.example              # VITE_*
+backend/                    # FastAPI
+  app/
+    main.py                 # FastAPI app + CORSMiddleware + include_router
+    dependencies/auth.py    # get_current_user() — verify Supabase JWT
+    routers/                # health.py, me.py (sau: sync, quiz, chat, documents, admin)
+    config/callout_types.py # Whitelist QUESTION_TYPES — single source of truth
+  tests/                    # pytest
+  requirements.txt  Dockerfile  .env.example
+supabase/migrations/        # SQL migrations (nguồn chân lý của schema)
+docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
 ```
 
 ## Quy ước code
 
-- Route/folder dùng root `app/` (không dùng `src/`). `app/` chỉ ở gốc; logic nằm ở `client/`+`server/`.
-- Import alias: `@/*` trỏ về root → dùng `@/client/...`, `@/server/...`.
-- **Ranh giới client/server**: `client/` chỉ được import **type-only** từ `server/` (bị xoá lúc
-  build), KHÔNG import runtime. `server/` giữ cả type/config dùng chung (callout-types, database.types)
-  vì chúng là domain của DB/parser.
-- Tất cả secret qua biến môi trường (xem `.env.example`). KHÔNG hardcode key.
-- `SUPABASE_SERVICE_ROLE_KEY` chỉ dùng server-side (`server/supabase/admin.ts`, có `import 'server-only'`)
-  — không bao giờ import vào client component.
-- `callout-types.ts` là nguồn duy nhất định nghĩa loại câu hỏi — parser và DB CHECK constraint phải
+**Frontend**
+- Import alias `@` → `frontend/src` (cấu hình ở `vite.config.ts` + cả hai `tsconfig`).
+- Mọi request tới backend đi qua `apiFetch()` trong `lib/api.ts` — không tự `fetch` rồi gắn token tay.
+- Chuỗi hiển thị cho user viết **tiếng Việt**; comment/tên biến **tiếng Anh**.
+
+**Backend**
+- Router mỏng, logic nằm ở module riêng (parser/, ai/, rag/ khi làm tới).
+- Mọi route riêng tư dùng `Depends(get_current_user)`. Backend **không tự quản session** — chỉ verify
+  JWT do Supabase phát.
+- `callout_types.py` là nguồn duy nhất định nghĩa loại câu hỏi — parser và DB CHECK constraint phải
   đồng bộ với nó.
 
-## Trạng thái hiện tại
+**Chung**
+- Tất cả secret qua biến môi trường. KHÔNG hardcode key. Chỉ commit `.env.example`.
+- `SUPABASE_SERVICE_ROLE_KEY` chỉ dùng ở backend (bypass RLS) — không bao giờ lộ ra frontend.
+- Frontend chỉ dùng **anon key** (bị RLS ràng buộc).
 
-Đang ở **Pass 1: Scaffold + Schema** (bước 1–2 trong 14 bước). Xem `check_list.md` để biết chi tiết
-việc đã/đang/sẽ làm. Các feature (auth flow, parser, AI, RAG, dashboard...) hoãn sang pass sau.
+## Auth (đã chạy thật)
+
+- Đăng nhập Magic Link, **invite-only** cưỡng chế bằng `signInWithOtp({ shouldCreateUser: false })`
+  — email không có sẵn trong `auth.users` bị từ chối, không tạo user mới.
+- Bảo vệ route ở frontend bằng component `ProtectedRoute` (SPA không có middleware SSR).
+- Backend verify JWT qua **JWKS / ES256** (project này ký bất đối xứng), lấy từ
+  `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`. **Không cần shared JWT secret.**
+- Local dev: Supabase **Site URL phải là `http://localhost:5173`** thì magic link mới redirect đúng.
+
+## Chạy local
+
+```bash
+# Backend — dùng venv, KHÔNG dùng Docker cho dev (RAG sau này cần venv)
+cd backend
+python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
+pip install -r requirements.txt
+python -m uvicorn app.main:app --port 8000
+
+# Frontend
+cd frontend && npm install && npm run dev            # http://localhost:5173
+```
+
+`docker-compose.yml` có sẵn nếu muốn chạy cả hai bằng container, nhưng dev thường ngày dùng venv +
+`npm run dev` cho nhẹ.
 
 ## Verify sau mỗi thay đổi
 
-- `npm run lint` và `npm run build` phải sạch.
-- Với thay đổi có runtime: chạy thử luồng thật (`npm run dev`), đừng chỉ dựa vào typecheck.
+- Backend: `pytest` từ `backend/` — phải xanh và **output sạch** (không warning).
+- Frontend: `npm run build` từ `frontend/` — không lỗi TypeScript.
+- Với thay đổi có runtime: **chạy thử luồng thật**, đừng chỉ dựa vào typecheck.
 - SQL: đọc lại migration theo thứ tự, đảm bảo RLS bật cho mọi bảng riêng tư.
+
+## Trạng thái hiện tại
+
+**Sub-project #0 (Foundation + Auth) — XONG**, verify end-to-end thật và đã merge vào `main`.
+Việc được chia thành các sub-project độc lập (#0–#8), mỗi cái có spec → plan → build riêng.
+Xem `check_list.md` để biết đã/đang/sẽ làm gì.
