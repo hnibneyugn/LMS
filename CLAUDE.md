@@ -6,9 +6,13 @@ Hướng dẫn cho Claude khi làm việc trên codebase này. Đọc file này 
 ## Dự án là gì
 
 Personal LMS (Learning Management System) cho nhóm nhỏ **< 10 người** (invite-only, không public).
-Nội dung học viết bằng Markdown trong Obsidian Vault của admin → auto-sync lên web. Người dùng học
-lý thuyết, làm bài tự luận, được AI chấm điểm + phản biện (Socratic), upload tài liệu cá nhân làm
-ngữ cảnh RAG (RAG đang hoãn — xem D8 trong `project_context.md`).
+**Mỗi user tự upload tài liệu của mình** (`.md`/`.docx`/`.pptx`/`.pdf`) → hệ thống extract sang
+markdown, cắt thành chương, user duyệt → thành bài học riêng tư của người đó. AI sinh câu hỏi từ
+nội dung bài, chấm điểm + phản biện (Socratic). Cả nhóm chung một bảng xếp hạng chuyên cần.
+
+> **Lưu ý khi đọc tài liệu cũ**: Obsidian Vault → GitHub → `/api/sync` **đã bỏ hẳn** (D17), câu hỏi
+> **không** parse từ callout `> [!type]` nữa mà do AI sinh (D13). Xem D13–D19 trong
+> `project_context.md`.
 
 ## Nguyên tắc thiết kế (BẤT BIẾN)
 
@@ -34,7 +38,7 @@ ngữ cảnh RAG (RAG đang hoãn — xem D8 trong `project_context.md`).
 | File storage | Cloudflare R2 (S3-compatible qua `boto3`) — **KHÔNG dùng Supabase Storage** |
 | Auth | Supabase Auth — Magic Link (email OTP), invite-only |
 | AI | Google Gemini qua Python SDK `google-genai` |
-| Sync | GitHub Webhook → `POST /api/sync` (FastAPI) |
+| Ingest | User upload file → R2 (presigned) → extract → cắt chương → `lessons` |
 | Hosting | Frontend: Vercel (static build) · Backend: Koyeb (Docker) |
 
 > **Model IDs (chat + embedding) — TẠM HOÃN.** Sẽ chốt khi build feature AI. Xem `check_list.md`.
@@ -58,8 +62,9 @@ backend/                    # FastAPI
   app/
     main.py                 # FastAPI app + CORSMiddleware + include_router
     dependencies/auth.py    # get_current_user() — verify Supabase JWT
-    routers/                # health.py, me.py (sau: sync, quiz, chat, documents, admin)
-    config/callout_types.py # Whitelist QUESTION_TYPES — single source of truth
+    routers/                # health.py, me.py (sau: files, quiz, chat, admin)
+    ingest/                 # (sau) extractors/{md,docx,pptx,pdf}.py + splitter.py
+    config/callout_types.py # QUESTION_TYPES — enum ép AI chọn khi sinh câu hỏi
   tests/                    # pytest
   requirements.txt  Dockerfile  .env.example
 supabase/migrations/        # SQL migrations (nguồn chân lý của schema)
@@ -77,8 +82,10 @@ docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
 - Router mỏng, logic nằm ở module riêng (parser/, ai/, rag/ khi làm tới).
 - Mọi route riêng tư dùng `Depends(get_current_user)`. Backend **không tự quản session** — chỉ verify
   JWT do Supabase phát.
-- `callout_types.py` là nguồn duy nhất định nghĩa loại câu hỏi — parser và DB CHECK constraint phải
-  đồng bộ với nó.
+- `callout_types.py` là nguồn duy nhất định nghĩa loại câu hỏi — prompt sinh câu hỏi và DB CHECK
+  constraint phải đồng bộ với nó.
+- `ingest/`: extractor (phụ thuộc định dạng) tách khỏi splitter (chỉ ăn markdown) — thêm định dạng
+  mới chỉ phải viết một hàm `extract(bytes) -> str`.
 
 **Chung**
 - Tất cả secret qua biến môi trường. KHÔNG hardcode key. Chỉ commit `.env.example`.

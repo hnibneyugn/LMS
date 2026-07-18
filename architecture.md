@@ -7,29 +7,30 @@ Kiến trúc hệ thống ở mức tổng quan. Cập nhật khi cấu trúc th
 Frontend và Backend là **hai deployment tách biệt**, giao tiếp qua REST API kèm JWT.
 
 ```
-   Obsidian Vault            ┌───────────────────────┐
-   (admin, local)            │  VERCEL (static)      │
-        │                    │  React SPA (Vite)     │
-   Obsidian Git              │  /login /dashboard    │
-        │ push               │  /lessons/:slug ...   │
-        ▼                    └───────────┬───────────┘
-   GitHub (private)                      │ fetch + Authorization: Bearer <JWT>
-        │ webhook                        ▼
-        │                    ┌───────────────────────┐
-        └───────────────────►│  KOYEB (Docker)       │
-          POST /api/sync     │  FastAPI              │
-                             │  /api/sync  /api/me   │
-                             │  /api/quiz/grade      │
-                             │  /api/chat/{id} ...   │
-                             └───┬───────────┬───────┘
-                                 │           │
-              ┌──────────────────▼──┐  ┌─────▼────────────┐  ┌──────────────┐
-              │   Supabase          │  │  Google Gemini   │  │ Cloudflare   │
-              │   (Postgres)        │  │  (google-genai)  │  │ R2 (S3 API)  │
-              │  - Auth (Magic Link)│  │  - grading       │  │  file gốc    │
-              │  - tables + RLS     │  │  - chat          │  │  private     │
-              │  - pgvector         │  │  - embedding     │  │  bucket      │
-              └─────────────────────┘  └──────────────────┘  └──────────────┘
+                             ┌───────────────────────┐
+   file .md/.docx            │  VERCEL (static)      │
+   .pptx/.pdf  ─────────────►│  React SPA (Vite)     │
+   (user upload)             │  /login /dashboard    │
+                             │  /upload /lessons/... │
+                             └───────────┬───────────┘
+        ┌────────────────────────────────┤ fetch + Authorization: Bearer <JWT>
+        │ PUT thẳng lên R2               ▼
+        │ (presigned URL)     ┌───────────────────────┐
+        │                     │  KOYEB (Docker)       │
+        │                     │  FastAPI              │
+        │                     │  /api/files/*  /me    │
+        │                     │  /api/quiz/grade      │
+        │                     │  /api/chat/{id} ...   │
+        │                     └───┬───────────┬───────┘
+        │                         │           │
+        │     ┌──────────────────▼──┐  ┌─────▼────────────┐  ┌──────────────┐
+        │     │   Supabase          │  │  Google Gemini   │  │ Cloudflare   │
+        │     │   (Postgres)        │  │  (google-genai)  │  │ R2 (S3 API)  │
+        │     │  - Auth (Magic Link)│  │  - sinh câu hỏi  │  │  file gốc    │
+        │     │  - tables + RLS     │  │  - grading       │  │  private     │
+        │     │  - pgvector         │  │  - chat          │  │  bucket      │
+        │     └─────────────────────┘  └──────────────────┘  └──────┬───────┘
+        └────────────────────────────────────────────────────────────┘
                         ▲
                         └──── frontend nói thẳng với Supabase Auth (Magic Link, session)
 ```
@@ -52,12 +53,13 @@ session, chỉ verify JWT đính kèm mỗi request.
   `audience = "authenticated"`; trả `CurrentUser(user_id, email)`; hỏng → 401, thiếu cấu hình → 500.
 - `CORSMiddleware` whitelist origin frontend qua `ALLOWED_ORIGINS` (KHÔNG dùng `*` vì có Bearer token).
 - Routers hiện có: `/api/health` (public, dùng cho keep-alive), `/api/me` (protected).
-- Routers sẽ thêm: `/api/sync` (webhook GitHub, verify HMAC, parse, upsert bằng service-role),
+- Routers sẽ thêm: `/api/files/*` (#1a — presign R2, process, trạng thái),
   `/api/quiz/grade` (structured output qua Pydantic), `/api/chat/{lesson_id}` (`StreamingResponse`),
-  `/api/documents/upload` (R2 + RAG — hoãn), `/api/admin/invite`.
+  `/api/admin/invite`. `/api/sync` đã bỏ cùng Obsidian sync (D17).
 
 ### Data layer (Supabase Postgres) — không đổi theo pivot
-- **Dùng chung**: `lessons`, `questions` (chỉ service-role ghi; user chỉ đọc).
+- **Riêng tư** (D16): `lessons` — mỗi user chỉ thấy bài từ tài liệu mình upload. `questions`
+  cũng riêng từng user (D13, migration ở #4a).
 - **Riêng tư** (RLS `auth.uid() = user_id`): `quiz_attempts`, `lesson_progress`, `chat_sessions`,
   `daily_activity`, `user_files`, `document_chunks`.
 - **Profile**: `user_profiles` (đọc chung cho leaderboard, sửa của riêng mình).
@@ -90,14 +92,19 @@ Ranh giới: hai bên **không share code**, chỉ share hợp đồng REST. Ali
 
 ## Module quan trọng
 
-### Markdown Parser (chưa làm — nằm trong sub-project #2)
-- Module **Python thuần túy, độc lập** với webhook: `input: markdown string` → `output:
-  { title, topic, content_md }` (Pydantic model).
-- Frontmatter qua `python-frontmatter`: `title` bắt buộc (thiếu → `LessonParseError`),
-  `topic` tuỳ chọn. **Không** đọc `week` (D14).
-- Parser **không** sinh ra câu hỏi. Câu hỏi do AI sinh riêng từng user ở #4a (D13) —
-  cú pháp callout `> [!type]` đã bỏ.
-- `callout_types.py` giữ lại nhưng đổi vai trò: enum ép AI chọn `type` khi sinh câu hỏi.
+### Ingest: Upload → Extract → Cắt chương (chưa làm — sub-project #1a)
+Spec: `docs/superpowers/specs/2026-07-18-upload-extract-design.md`
+
+- `ingest/extractors/` — mỗi định dạng một module, cùng chữ ký `extract(bytes) -> str`:
+  `.md` (`python-frontmatter`), `.docx` (`python-docx`), `.pptx` (`python-pptx`),
+  `.pdf` (`pypdf`). **Không OCR** — PDF không có text layer báo lỗi rõ (D19).
+- `ingest/splitter.py` — `split_into_chapters(md, file_type)`, thuần túy, chỉ ăn markdown nên
+  test được độc lập. Cắt theo heading cấp cao nhất, trần 8000 ký tự/chương.
+- Một file → **nhiều** `lessons` (D18): `user_files` là "cuốn sách", `lessons` là "chương",
+  nối bằng `source_file_id` + `order_index`.
+- Kết quả cắt để ở `user_files.draft_outline` (jsonb) cho user duyệt ở #1b, **chưa** ghi `lessons`.
+- Câu hỏi **không** parse từ tài liệu — AI sinh riêng từng user ở #4a (D13). `callout_types.py`
+  giữ lại với vai trò enum ép AI chọn `type`.
 - Không có đáp án mẫu — AI chấm dựa trên toàn bộ `lesson.content_md`.
 
 ## Ranh giới bảo mật
@@ -107,5 +114,7 @@ Ranh giới: hai bên **không share code**, chỉ share hợp đồng REST. Ali
 - Backend verify JWT bằng **khóa công khai từ JWKS** (ES256), thuật toán pin cứng — không chấp nhận
   `alg` khác, không có shared secret để rò rỉ.
 - CORS whitelist domain frontend cụ thể, `allow_credentials=True`.
-- Webhook verify HMAC (`GITHUB_WEBHOOK_SECRET`) trước khi xử lý.
+- Upload: `storage_path` trên R2 luôn có tiền tố `{user_id}/`; presigned URL hết hạn 15 phút;
+  bucket private. Endpoint `/api/files/*` lấy `user_id` từ JWT, **không** nhận từ client — thao
+  tác lên file người khác trả **404** (không phải 403, tránh lộ sự tồn tại).
 - RAG retrieval luôn filter cứng `user_id` — không rò tài liệu giữa các user.

@@ -17,9 +17,10 @@ tier) và **bảo mật dữ liệu cá nhân** (RLS).
 
 ## 3. Luồng dữ liệu chính
 
-1. **Nội dung học (dùng chung)**: Obsidian Vault → Obsidian Git plugin (auto commit/push) → GitHub
-   private repo → GitHub Webhook → `POST /api/sync` (FastAPI) → parse frontmatter + callout → upsert
-   vào `lessons` / `questions` bằng service-role.
+1. **Nội dung học (RIÊNG TƯ theo user — D16/D17/D18)**: user upload file (`.md`/`.docx`/`.pptx`/
+   `.pdf` có text) → presigned URL → Cloudflare R2 + `user_files` → background task extract sang
+   markdown → cắt thành chương → `user_files.draft_outline` → user duyệt/sửa → ghi nhiều `lessons`
+   (mỗi chương một bài, nối bằng `source_file_id`). **Không còn Obsidian/GitHub sync.**
 2. **Đăng nhập**: frontend gọi thẳng Supabase Auth (Magic Link) → nhận JWT → đính kèm
    `Authorization: Bearer` vào mọi request tới backend → backend verify qua JWKS.
 3. **Học & làm bài (riêng tư)**: user đọc lesson → làm câu hỏi tự luận → AI chấm (structured output,
@@ -49,6 +50,10 @@ tier) và **bảo mật dữ liệu cá nhân** (RLS).
 | **D13** | **Câu hỏi ôn tập do AI sinh riêng cho từng user, KHÔNG parse từ callout Obsidian** (2026-07-18) | Admin chỉ viết lý thuyết, không phải soạn tay câu hỏi cho mọi bài. Hệ quả: bỏ hẳn cú pháp `> [!recall]`; `callout_types.py` đổi vai trò thành enum ép AI chọn `type`; bảng `questions` cần thêm `user_id` + RLS (đang là bảng dùng chung); sub-project #1 rút gọn còn parse frontmatter nên **gộp vào #2**; sinh câu hỏi tách ra thành #4a. **Không dùng RAG** cho việc này — một bài học chỉ vài nghìn token, đưa nguyên `content_md` vào prompt chính xác hơn retrieval. RAG (D8) vẫn chỉ dành cho tài liệu cá nhân user upload. |
 | D14 | Parser **không đọc `week`** từ frontmatter | Giả định "tài liệu chia theo tuần" không đúng với mọi người viết. Cột `lessons.week` giữ lại nullable (luôn NULL, không cần migration) phòng khi dùng lại; UI ở #3 bỏ tab lọc Tuần, chỉ còn Chủ đề. |
 | D15 | Leaderboard xếp theo **số ngày học**, không theo điểm; xếp theo **giờ học** hoãn | Chủ dự án muốn thi đua chuyên cần thay vì điểm số. Số ngày lấy từ `daily_activity.activity_date` — chính xác, gần như miễn phí, trùng nguồn dữ liệu với streak. Đo *giờ* học trên web cần heartbeat lúc tab mở và xử lý tab bỏ quên/đóng máy đột ngột → dễ ra số liệu rác, chưa đáng làm. |
+| **D16** | **Mỗi user tự upload tài liệu của mình để học; `lessons` thành bảng RIÊNG TƯ** (2026-07-18) | Đổi từ "cả nhóm học chung giáo trình admin soạn" sang "mỗi người mang tài liệu của mình vào học". `lessons` thêm `user_id` + RLS (migration `0006`). Hệ quả: "% hoàn thành bài học" mất ý nghĩa so sánh cross-user, leaderboard chỉ còn số ngày học (D15); phần "tính nhóm" của sản phẩm co lại còn đăng nhập chung + bảng xếp hạng chuyên cần. |
+| **D17** | **BỎ HẲN Obsidian Vault → GitHub → `/api/sync`** (2026-07-18) | Hệ quả trực tiếp của D16: nếu mọi user đều upload file thì Git sync chỉ phục vụ đúng 1 người. Rụng theo: `GITHUB_WEBHOOK_SECRET`, GitHub PAT, HMAC verify, GitHub Contents API, sub-project #2. Còn một đường vào nội dung duy nhất = upload file. |
+| **D18** | **Một file → NHIỀU bài học, cắt theo heading, user duyệt trước khi lưu** | Tài liệu upload có thể là cả giáo trình vài trăm trang. "1 file = 1 bài" thì bài quá dài để đọc và `content_md` vượt giới hạn prompt khi sinh câu hỏi (#4a). Dùng `user_files` làm "cuốn sách", `lessons` làm "chương", nối bằng `source_file_id` — không cần bảng mới. Máy cắt tự động, người sửa lại ở pha review (`user_files.draft_outline`). Cắt xong mỗi chương lại về cỡ vài nghìn token nên **vẫn không cần RAG** cho việc sinh câu hỏi. |
+| D19 | Định dạng đợt đầu: `.md`, `.docx`, `.pptx`, `.pdf` **có text layer**. Không OCR | OCR nặng, chậm, D9 cấm dùng Gemini cho doc processing, chất lượng tiếng Việt kém. PDF scan báo lỗi rõ ràng thay vì trả markdown rác. |
 | D12 | Dev local chạy backend bằng **venv**, không Docker | Máy dev hạn chế RAM (Docker Desktop/WSL2 nặng); RAG sau này thêm nhiều thư viện Python nên venv bền vững hơn. `docker-compose.yml` vẫn giữ như tuỳ chọn + parity với bản deploy Koyeb. |
 
 ## 5. Giả định (assumptions)
