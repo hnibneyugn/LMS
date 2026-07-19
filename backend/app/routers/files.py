@@ -141,6 +141,15 @@ def process(
             status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy file."
         )
 
+    if row["processing_status"] == "processing":
+        # Fast path for the common duplicate click. Correctness still rests on
+        # the atomic claim below — this only spares an in-flight file a pointless
+        # R2 round trip, and stops a transient storage blip from being reported
+        # as 503 "storage down" when the real answer is 409 "already running".
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="File đang được xử lý."
+        )
+
     try:
         exists = r2.object_exists(row["storage_path"])
     except Exception:

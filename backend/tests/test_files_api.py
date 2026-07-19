@@ -165,6 +165,27 @@ def test_process_while_already_processing_is_409(repo):
     assert res.status_code == 409
 
 
+def test_process_on_an_in_flight_file_is_409_even_when_r2_is_down(repo, monkeypatch):
+    """A duplicate click must not be answered with a storage error.
+
+    An already-processing file is short-circuited before R2 is consulted, so a
+    transient outage cannot mask the real reason the request was refused.
+    """
+    calls = []
+
+    def exploding_object_exists(key):
+        calls.append(key)
+        raise RuntimeError("R2 unreachable")
+
+    monkeypatch.setattr(files_router.r2, "object_exists", exploding_object_exists)
+    file_id = _make_row(repo, status="processing")
+
+    res = client.post(f"/api/files/{file_id}/process", headers=_headers())
+
+    assert res.status_code == 409
+    assert calls == []
+
+
 def test_process_retries_a_failed_file(repo):
     file_id = _make_row(repo, status="error")
     res = client.post(f"/api/files/{file_id}/process", headers=_headers())
