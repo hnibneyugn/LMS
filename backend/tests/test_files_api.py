@@ -444,3 +444,62 @@ def test_list_files_only_returns_own_files(repo):
     res = client.get("/api/files", headers=auth_headers())
     assert res.status_code == 200
     assert [f["id"] for f in res.json()] == [mine]
+
+
+def test_list_files_hides_storage_path_and_user_id(repo):
+    repo.rows["f-list"] = {
+        "id": "f-list",
+        "user_id": USER_ID,
+        "file_name": "x.docx",
+        "file_type": "docx",
+        "file_size": 123,
+        "storage_path": f"{USER_ID}/f-list.docx",
+        "processing_status": "ready_for_review",
+        "draft_outline": [
+            {"title": "a", "content_md": "aa", "order_index": 0},
+            {"title": "b", "content_md": "bb", "order_index": 1},
+        ],
+    }
+    res = client.get("/api/files", headers=auth_headers())
+    assert res.status_code == 200
+    row = res.json()[0]
+    assert "storage_path" not in row
+    assert "user_id" not in row
+    assert "draft_outline" not in row
+    assert row["chapter_count"] == 2
+
+
+def test_list_files_reports_null_chapter_count_before_processing(repo):
+    repo.rows["f-pending"] = {
+        "id": "f-pending",
+        "user_id": USER_ID,
+        "file_name": "x.docx",
+        "file_type": "docx",
+        "file_size": 1,
+        "storage_path": f"{USER_ID}/f-pending.docx",
+        "processing_status": "pending",
+    }
+    res = client.get("/api/files", headers=auth_headers())
+    assert res.json()[0]["chapter_count"] is None
+
+
+def test_get_file_includes_draft_outline_but_not_storage_path(repo):
+    repo.rows["f-one"] = {
+        "id": "f-one",
+        "user_id": USER_ID,
+        "file_name": "x.docx",
+        "file_type": "docx",
+        "file_size": 5,
+        "storage_path": f"{USER_ID}/f-one.docx",
+        "processing_status": "ready_for_review",
+        "draft_outline": [{"title": "a", "content_md": "aa", "order_index": 0}],
+    }
+    res = client.get("/api/files/f-one", headers=auth_headers())
+    assert res.status_code == 200
+    body = res.json()
+    assert "storage_path" not in body
+    assert "user_id" not in body
+    assert body["draft_outline"] == [
+        {"title": "a", "content_md": "aa", "order_index": 0}
+    ]
+    assert body["chapter_count"] == 1

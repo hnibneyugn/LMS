@@ -54,6 +54,34 @@ class ConfirmResponse(BaseModel):
     lesson_count: int
 
 
+class DraftChapterOut(BaseModel):
+    title: str
+    content_md: str
+    order_index: int
+
+
+class FileOut(BaseModel):
+    """Everything the file list needs -- and nothing else.
+
+    `storage_path` and `user_id` are deliberately absent: the client never
+    addresses R2 directly (it only ever uses a presigned URL) and never needs
+    to name a user, so shipping either would be leaking internals for free.
+    """
+
+    id: str
+    file_name: str
+    file_type: str
+    file_size: int | None = None
+    processing_status: str
+    error_message: str | None = None
+    uploaded_at: str | None = None
+    chapter_count: int | None = None
+
+
+class FileDetailOut(FileOut):
+    draft_outline: list[DraftChapterOut] | None = None
+
+
 # Every status other than ready_for_review is a 409 with its own explanation.
 _CONFIRM_BLOCKED = {
     "pending": "File chưa xử lý xong.",
@@ -238,6 +266,12 @@ def _build_lesson_rows(
     return rows
 
 
+def _to_file_out(row: dict) -> dict:
+    """Row -> FileOut-shaped dict, deriving chapter_count from the outline."""
+    outline = row.get("draft_outline")
+    return {**row, "chapter_count": len(outline) if outline is not None else None}
+
+
 @router.post("/presign", response_model=PresignResponse)
 def presign(body: PresignRequest, user: CurrentUser = Depends(get_current_user)):
     if body.file_size > settings.MAX_FILE_BYTES:
@@ -330,19 +364,19 @@ def process(
     return {"status": "processing"}
 
 
-@router.get("/{file_id}")
+@router.get("/{file_id}", response_model=FileDetailOut)
 def get_file(file_id: str, user: CurrentUser = Depends(get_current_user)):
     row = repo.get_file(file_id, user.user_id)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy file."
         )
-    return row
+    return _to_file_out(row)
 
 
-@router.get("")
+@router.get("", response_model=list[FileOut])
 def list_files(user: CurrentUser = Depends(get_current_user)):
-    return repo.list_files(user.user_id)
+    return [_to_file_out(row) for row in repo.list_files(user.user_id)]
 
 
 @router.post("/{file_id}/confirm", response_model=ConfirmResponse)
