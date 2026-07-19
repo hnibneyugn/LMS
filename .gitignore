@@ -46,3 +46,6 @@ next-env.d.ts
 .venv/
 __pycache__/
 *.pyc
+
+# One-off verification samples: personal documents, never commit.
+backend/scripts/samples/
