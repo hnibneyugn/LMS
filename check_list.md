@@ -53,15 +53,31 @@ Bỏ hẳn 2026-07-18 (D17). Câu hỏi giờ do AI sinh chứ không parse từ
 vào bằng upload file chứ không qua Obsidian/GitHub (D16). Parser markdown vẫn sống, nhưng chỉ
 còn là **một trong bốn** extractor của #1a. `GITHUB_WEBHOOK_SECRET` không cần nữa.
 
-### #1a — Upload → Extract → Cắt chương (backend)
+### #1a — Upload → Extract → Cắt chương (backend) — ✅ XONG (2026-07-19, nhánh `feature/upload-extract`)
 Spec: `docs/superpowers/specs/2026-07-18-upload-extract-design.md`
-- [ ] Migration `0006`: `lessons` + `user_id`/`source_file_id`/`order_index`, RLS, unique
+Plan: `docs/superpowers/plans/2026-07-19-upload-extract-chapters.md`
+- [x] Migration `0006`: `lessons` + `user_id`/`source_file_id`/`order_index`, RLS, unique
       `(user_id, slug)`; `user_files` + `draft_outline`, nới CHECK `file_type`/`processing_status`
-- [ ] R2 qua `boto3` + `POST /api/files/presign` (≤20MB, hết hạn 15 phút)
-- [ ] `POST /api/files/{id}/process` → `BackgroundTasks`; `GET /api/files/{id}`, `GET /api/files`
-- [ ] 4 extractor `.md`/`.docx`/`.pptx`/`.pdf` (không OCR — PDF scan báo lỗi rõ, D19)
-- [ ] `splitter.py` cắt chương theo heading, trần 8000 ký tự/chương
-- [ ] Verify thật: upload `.docx` + `.pdf` nhiều chương lên R2 thật, kiểm `draft_outline`
+      (kèm `drop policy lessons_select` — policy cũ cho mọi user đọc chung, không bỏ thì RLS vô nghĩa)
+- [x] R2 qua `boto3` + `POST /api/files/presign` (≤20MB, hết hạn 15 phút)
+- [x] `POST /api/files/{id}/process` → `BackgroundTasks`; `GET /api/files/{id}`, `GET /api/files`
+- [x] 4 extractor `.md`/`.docx`/`.pptx`/`.pdf` (không OCR — PDF scan báo lỗi rõ, D19)
+- [x] `splitter.py` cắt chương theo heading, trần 8000 ký tự/chương
+- [x] 76/76 pytest xanh, output sạch
+
+**Verify thật (chạy trên R2 thật + Supabase thật, qua đúng 4 endpoint HTTP):**
+- [x] `.docx` 6MB → presign 200 → PUT R2 200 → process 202 → `ready_for_review`, 7 chương
+- [x] `.pdf` 30 trang có text → 4 chương (`Phần 1..3`, phần dài tự cắt đôi), không chương nào >8000
+- [x] PDF scan (14 trang, 0 ký tự text) → `error` + thông báo tiếng Việt gợi ý dùng bản có text
+- [x] File hỏng → `error` + tiếng Việt; gọi lại `/process` → 202, chạy lại được (retry OK)
+- [x] Token sai/không có → 401; file id lạ → 404
+- [x] RLS thật: `user_files` có 3 dòng nhưng anon key đọc ra 0; `lessons` cũng 0
+
+> **Lưu ý cho #1b (phát hiện từ dữ liệu thật):** tài liệu Word tiếng Việt thường **không gán heading
+> style** — file mẫu có 110/114 đoạn là `Normal`, chỉ 4 đoạn `Heading 2`. Hệ quả: 19k ký tự đầu
+> không có cấu trúc nào máy đọc được, bị cắt cứng thành 3 cục "Mở đầu (1)(2)(3)". Extractor xử lý
+> đúng, nhưng **pha duyệt chương ở #1b gánh rất nặng**. Cân nhắc heuristic nhận diện tiêu đề đánh
+> số (`Chương N`, `1.1`) trong đoạn `Normal`.
 
 ### #1b — UI upload + duyệt chương
 - [ ] Trang upload (presign → PUT thẳng R2 → process → poll trạng thái)
@@ -133,12 +149,27 @@ Chỉ làm khi nhóm thật sự cần. Bảng `user_files`/`document_chunks` đ
       nâng dependency.
 - [ ] `lucide-react` chưa được import ở đâu (giữ lại vì Shadcn sẽ cần khi thêm component ở #3).
 
+Từ review #1a (đã triage, không chặn gì):
+- [ ] `settings.ALLOWED_FILE_TYPES` **không có chỗ nào trong production dùng** — danh sách định dạng
+      đang tồn tại 3 bản (Literal ở `files.py`, CHECK trong DB, biến này). Xoá hoặc derive Literal từ nó.
+- [ ] `md.py` parse `title`/`topic` trong frontmatter rồi vứt đi (spec §5.1 có yêu cầu) — file `.md`
+      không heading sẽ lấy tên file làm tiêu đề chương thay vì title trong frontmatter.
+- [ ] `/process` gọi trên file `ready_for_review`/`done` sẽ ghi đè `draft_outline` không hỏi gì;
+      spec §4 chỉ định nghĩa retry cho trạng thái `error`. #1b chốt lại ngữ nghĩa này.
+- [ ] Deck chỉ có tiêu đề slide (không body) báo "không trích xuất được nội dung" — thông báo sai
+      nguyên nhân, thực ra extractor có lấy được tiêu đề.
+- [ ] `GET /api/files*` trả `select("*")`, lộ `storage_path` + `user_id` cho client. Whitelist bằng
+      `response_model` khi #1b chốt payload.
+- [ ] `_FakeTable` bị lặp giữa `test_files_api.py` và `test_pipeline.py` — gom vào `conftest.py` khi
+      có file thứ ba cần.
+
 ## Việc cần user (blocker)
 
 - [x] Key Supabase (URL/anon/service-role), Gemini, GitHub webhook secret, `ADMIN_EMAIL` — đã có
 - [x] Supabase Site URL = `http://localhost:5173` cho dev — đã đổi
 - [x] Không cần `SUPABASE_JWT_SECRET` nữa (verify bằng JWKS)
 - [!] Chốt model AI Gemini (chat) trước #4a/#4
-- [!] **R2 keys** (`R2_ACCOUNT_ID`, access key, secret, bucket) — cần cho #1a, user báo đã có
+- [x] **R2 keys** (`R2_ACCOUNT_ID`, access key, secret, bucket) — đã có và đã verify ghi được lên
+      bucket `binh` thật (token ban đầu chỉ có quyền đọc, đã đổi sang Object Read & Write)
 - Không cần `GITHUB_WEBHOOK_SECRET` nữa (D17 bỏ Obsidian sync)
 - (HOÃN cùng RAG) embedding model
