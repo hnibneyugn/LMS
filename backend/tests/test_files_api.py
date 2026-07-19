@@ -34,7 +34,14 @@ def _headers(user_id: str = _USER_ID) -> dict:
 
 
 class _FakeRepo:
-    """Stands in for every db call the router makes."""
+    """Stands in for every db call the router makes.
+
+    Mirrors the real _Repo's method signatures (including the user_id scoping
+    on set_status/claim_for_processing) so the router-level tests below still
+    exercise the router's own logic faithfully. The real query-building code
+    inside _Repo is exercised separately by the `real_repo` fixture further
+    down, against a fake supabase client rather than a fake repo.
+    """
 
     def __init__(self):
         self.rows: dict[str, dict] = {}
@@ -53,8 +60,20 @@ class _FakeRepo:
     def list_files(self, user_id):
         return [r for r in self.rows.values() if r["user_id"] == user_id]
 
-    def set_status(self, file_id, status):
-        self.rows[file_id]["processing_status"] = status
+    def set_status(self, file_id, user_id, status):
+        row = self.rows.get(file_id)
+        if row is None or row["user_id"] != user_id:
+            return
+        row["processing_status"] = status
+
+    def claim_for_processing(self, file_id, user_id):
+        row = self.rows.get(file_id)
+        if row is None or row["user_id"] != user_id:
+            return []
+        if row["processing_status"] == "processing":
+            return []
+        row["processing_status"] = "processing"
+        return [row]
 
 
 @pytest.fixture
@@ -159,6 +178,206 @@ def test_process_errors_when_the_object_is_missing_from_r2(repo, monkeypatch):
     res = client.post(f"/api/files/{file_id}/process", headers=_headers())
     assert res.status_code == 400
     assert repo.rows[file_id]["processing_status"] == "error"
+
+
+def test_process_a_second_time_before_the_first_finishes_is_409(repo):
+    """Calling process() twice in a row for the same file — the second call
+    must see the first call's claim and be rejected, not silently queue a
+    second background job."""
+    file_id = _make_row(repo)
+    first = client.post(f"/api/files/{file_id}/process", headers=_headers())
+    second = client.post(f"/api/files/{file_id}/process", headers=_headers())
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert repo.rows[file_id]["processing_status"] == "processing"
+
+
+def test_process_returns_503_when_r2_is_unreachable(repo, monkeypatch, caplog):
+    """A raised exception from r2.object_exists (bad credentials, R2 outage)
+    is not the same thing as "the object is missing" -- it must surface as a
+    503 with a Vietnamese retry message, and must NOT mark the row 'error'
+    since the file itself is fine and a retry should just work."""
+
+    def boom(_key):
+        raise ConnectionError("R2 unreachable")
+
+    monkeypatch.setattr(files_router.r2, "object_exists", boom)
+    file_id = _make_row(repo)
+
+    with caplog.at_level("ERROR", logger="app.routers.files"):
+        res = client.post(f"/api/files/{file_id}/process", headers=_headers())
+
+    assert res.status_code == 503
+    assert "thử lại" in res.json()["detail"]
+    assert repo.rows[file_id]["processing_status"] == "pending"
+    assert any(r.levelname == "ERROR" for r in caplog.records)
+
+
+def test_process_503_on_r2_outage_does_not_block_a_later_retry(repo, monkeypatch):
+    file_id = _make_row(repo)
+
+    def boom(_key):
+        raise ConnectionError("R2 unreachable")
+
+    monkeypatch.setattr(files_router.r2, "object_exists", boom)
+    first = client.post(f"/api/files/{file_id}/process", headers=_headers())
+    assert first.status_code == 503
+
+    monkeypatch.setattr(files_router.r2, "object_exists", lambda k: True)
+    second = client.post(f"/api/files/{file_id}/process", headers=_headers())
+    assert second.status_code == 202
+
+
+# --- _Repo query building (real client) ---------------------------------------
+#
+# Everything above replaces the module-level `repo` with `_FakeRepo`, whose
+# filtering logic is hand-written and independent of `_Repo`. That means
+# `_Repo`'s actual supabase-py query building (the `.eq("user_id", ...)`
+# calls that are the whole point of this file) never ran under test. The
+# tests below run the REAL `_Repo` against a fake supabase CLIENT instead —
+# same approach as test_pipeline.py's `_FakeTable`/`_FakeClient` — so a
+# dropped `user_id` filter fails a test here even though it would sail
+# through every test above.
+
+
+class _FakeTable:
+    """Mimics the slice of supabase-py's fluent query builder `_Repo` uses.
+
+    Same shape as test_pipeline.py's fake: filters accumulate across chained
+    `.eq()`/`.neq()` calls and are applied together in `execute()`.
+    """
+
+    def __init__(self, store):
+        self._store = store
+        self._filters: dict[str, object] = {}
+        self._neq_filters: dict[str, object] = {}
+        self._update_values: dict | None = None
+        self._insert_values: dict | None = None
+        self._maybe_single = False
+
+    def select(self, *_columns):
+        return self
+
+    def insert(self, values):
+        self._insert_values = values
+        return self
+
+    def update(self, values):
+        self._update_values = values
+        return self
+
+    def eq(self, column, value):
+        self._filters[column] = value
+        return self
+
+    def neq(self, column, value):
+        self._neq_filters[column] = value
+        return self
+
+    def order(self, _column, desc=False):
+        return self
+
+    def maybe_single(self):
+        self._maybe_single = True
+        return self
+
+    def _matches(self):
+        return [
+            row
+            for row in self._store.values()
+            if all(row.get(k) == v for k, v in self._filters.items())
+            and all(row.get(k) != v for k, v in self._neq_filters.items())
+        ]
+
+    def execute(self):
+        if self._insert_values is not None:
+            self._store[self._insert_values["id"]] = dict(self._insert_values)
+            return type("Res", (), {"data": [dict(self._insert_values)]})()
+        matches = self._matches()
+        if self._update_values is not None:
+            for row in matches:
+                row.update(self._update_values)
+            return type("Res", (), {"data": [dict(row) for row in matches]})()
+        if self._maybe_single:
+            if not matches:
+                return None
+            return type("Res", (), {"data": dict(matches[0])})()
+        return type("Res", (), {"data": [dict(row) for row in matches]})()
+
+
+class _FakeClient:
+    def __init__(self, store):
+        self._store = store
+
+    def table(self, _name):
+        return _FakeTable(self._store)
+
+
+@pytest.fixture
+def real_repo(monkeypatch):
+    """A REAL `_Repo` wired to a fake supabase client with a multi-user
+    store, so tests exercise `_Repo`'s actual query-building code rather
+    than a hand-written substitute."""
+    store = {
+        "f1": {
+            "id": "f1",
+            "user_id": _USER_ID,
+            "file_name": "mine.md",
+            "file_type": "md",
+            "storage_path": f"{_USER_ID}/f1.md",
+            "processing_status": "pending",
+        },
+        "f2": {
+            "id": "f2",
+            "user_id": _OTHER_USER_ID,
+            "file_name": "theirs.md",
+            "file_type": "md",
+            "storage_path": f"{_OTHER_USER_ID}/f2.md",
+            "processing_status": "pending",
+        },
+    }
+    client_ = _FakeClient(store)
+    monkeypatch.setattr(files_router.db, "admin", lambda: client_)
+    return files_router._Repo(), store
+
+
+def test_real_repo_get_file_does_not_return_another_users_row(real_repo):
+    repo_, _store = real_repo
+    assert repo_.get_file("f2", _USER_ID) is None
+    assert repo_.get_file("f1", _USER_ID) is not None
+
+
+def test_real_repo_list_files_only_returns_own_rows(real_repo):
+    repo_, _store = real_repo
+    ids = [r["id"] for r in repo_.list_files(_USER_ID)]
+    assert ids == ["f1"]
+
+
+def test_real_repo_set_status_does_not_modify_another_users_row(real_repo):
+    repo_, store = real_repo
+    repo_.set_status("f2", _USER_ID, "error")
+    assert store["f2"]["processing_status"] == "pending"  # untouched
+
+    repo_.set_status("f1", _USER_ID, "error")
+    assert store["f1"]["processing_status"] == "error"
+
+
+def test_real_repo_claim_for_processing_does_not_claim_another_users_row(real_repo):
+    repo_, store = real_repo
+    claimed = repo_.claim_for_processing("f2", _USER_ID)
+    assert claimed == []
+    assert store["f2"]["processing_status"] == "pending"
+
+
+def test_real_repo_claim_for_processing_only_lets_one_caller_win(real_repo):
+    """Exercises the conditional UPDATE (`.neq("processing_status",
+    "processing")`) that closes the check-then-act race: of two sequential
+    claims on the same not-yet-processing row, only the first may succeed."""
+    repo_, _store = real_repo
+    first = repo_.claim_for_processing("f1", _USER_ID)
+    second = repo_.claim_for_processing("f1", _USER_ID)
+    assert len(first) == 1
+    assert second == []
 
 
 # --- read --------------------------------------------------------------------

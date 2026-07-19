@@ -1,5 +1,6 @@
 """File upload lifecycle: presign -> (browser PUTs to R2) -> process -> poll."""
 
+import logging
 import uuid
 from typing import Literal
 
@@ -11,6 +12,8 @@ from app.config import settings
 from app.dependencies.auth import CurrentUser, get_current_user
 from app.ingest import pipeline
 from app.storage import r2
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -62,10 +65,34 @@ class _Repo:
         )
         return result.data or []
 
-    def set_status(self, file_id: str, status_value: str) -> None:
+    def set_status(self, file_id: str, user_id: str, status_value: str) -> None:
         db.admin().table("user_files").update(
             {"processing_status": status_value}
-        ).eq("id", file_id).execute()
+        ).eq("id", file_id).eq("user_id", user_id).execute()
+
+    def claim_for_processing(self, file_id: str, user_id: str) -> list[dict]:
+        """Atomically transition a row to 'processing', but only if it is not
+        already 'processing'.
+
+        This is a single conditional UPDATE rather than a read-then-write, so
+        it is atomic in Postgres: two concurrent calls for the same file_id
+        can both pass a prior "is it already processing?" read, but only one
+        of them will actually match this UPDATE's WHERE clause and flip the
+        status, because the second one runs after the first has committed.
+        The caller must have already confirmed the row exists and belongs to
+        user_id (e.g. via get_file) to tell 404 apart from "lost the race":
+        an empty result here means "already processing", not "not found".
+        """
+        result = (
+            db.admin()
+            .table("user_files")
+            .update({"processing_status": "processing"})
+            .eq("id", file_id)
+            .eq("user_id", user_id)
+            .neq("processing_status", "processing")
+            .execute()
+        )
+        return result.data or []
 
 
 repo = _Repo()
@@ -113,19 +140,35 @@ def process(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy file."
         )
-    if row["processing_status"] == "processing":
+
+    try:
+        exists = r2.object_exists(row["storage_path"])
+    except Exception:
+        # R2 itself is unreachable (bad credentials, outage) — this is not
+        # the user's fault and not evidence the file is broken, so the row
+        # is left untouched and the user is told to simply retry shortly.
+        logger.exception("r2.object_exists failed for file %s", file_id)
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="File đang được xử lý."
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Kho lưu trữ tạm thời không khả dụng. Vui lòng thử lại sau ít phút.",
         )
 
-    if not r2.object_exists(row["storage_path"]):
-        repo.set_status(file_id, "error")
+    if not exists:
+        repo.set_status(file_id, user.user_id, "error")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Chưa thấy file trên kho lưu trữ — hãy tải lên lại.",
         )
 
-    repo.set_status(file_id, "processing")
+    # A single conditional UPDATE, not a read-then-write: closes the race
+    # where two concurrent requests for the same file both see "not
+    # processing" and both queue a background job.
+    claimed = repo.claim_for_processing(file_id, user.user_id)
+    if not claimed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="File đang được xử lý."
+        )
+
     background.add_task(pipeline.process_file, file_id)
     return {"status": "processing"}
 
