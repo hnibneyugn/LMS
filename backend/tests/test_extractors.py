@@ -260,3 +260,67 @@ def test_docx_body_text_with_a_leading_hash_does_not_collapse_the_document():
 
     assert [c.title for c in chapters] == ["Chuong mot", "Chuong hai"]
     assert "khong phai heading that" in chapters[1].content_md
+
+
+def _docx_bytes(paragraphs: list[tuple[str, str]]) -> bytes:
+    """Build a .docx in memory. Each tuple is (style_name, text)."""
+    import io
+
+    from docx import Document
+
+    document = Document()
+    for style_name, text in paragraphs:
+        document.add_paragraph(text, style=style_name)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def test_docx_normal_paragraphs_with_numbering_become_headings():
+    from app.ingest.extractors import docx as docx_extractor
+
+    data = _docx_bytes(
+        [
+            ("Normal", "Chương 1 Tổng quan"),
+            ("Normal", "Nội dung chương một."),
+            ("Normal", "Chương 2 Chi tiết"),
+            ("Normal", "Nội dung chương hai."),
+            ("Normal", "2.1 Mục nhỏ"),
+            ("Normal", "Nội dung mục nhỏ."),
+        ]
+    )
+    md = docx_extractor.extract(data)
+    assert "## Chương 1 Tổng quan" in md
+    assert "## Chương 2 Chi tiết" in md
+    assert "### 2.1 Mục nhỏ" in md
+    assert "Nội dung chương một." in md
+
+
+def test_docx_numbered_list_prose_is_not_turned_into_headings():
+    from app.ingest.extractors import docx as docx_extractor
+
+    data = _docx_bytes(
+        [
+            ("Normal", "1. Điều thứ nhất là phải giữ nguyên câu này."),
+            ("Normal", "2. Điều thứ hai cũng vậy, không được thành heading."),
+        ]
+    )
+    md = docx_extractor.extract(data)
+    assert "#" not in md.replace("\\#", "")
+
+
+def test_docx_real_heading_styles_still_win():
+    """Regression: documents that DO carry heading styles must be unchanged."""
+    from app.ingest.extractors import docx as docx_extractor
+
+    data = _docx_bytes(
+        [
+            ("Heading 1", "Phần mở đầu"),
+            ("Normal", "Nội dung."),
+            ("Heading 2", "Chi tiết"),
+            ("Normal", "Thêm nội dung."),
+        ]
+    )
+    md = docx_extractor.extract(data)
+    assert "# Phần mở đầu" in md
+    assert "## Chi tiết" in md
