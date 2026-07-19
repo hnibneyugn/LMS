@@ -95,3 +95,41 @@ def test_chapter_serialises_to_the_draft_outline_shape():
         "content_md": chapters[0].content_md,
         "order_index": 0,
     }
+
+
+def test_hard_split_label_never_exceeds_the_title_cap():
+    # Title already at the 200-char cap, body has no deeper sub-heading and
+    # is over the 8000-char chapter cap, so `_shrink` must hard-split it and
+    # number the pieces without pushing any label past MAX_TITLE_CHARS.
+    title = "t" * 200
+    body = "mot doan van rat dai. " * 1200  # ~27600 chars, no sub-headings
+    md = f"# {title}\n{body}"
+    chapters = split_into_chapters(md, fallback_title="tai-lieu")
+    assert len(chapters) >= 2
+    assert all(len(c.title) <= 200 for c in chapters)
+    assert all(len(c.content_md) <= 8000 for c in chapters)
+    # Truncation must not eat the numeric suffix -- pieces must stay
+    # distinguishable from one another.
+    assert chapters[0].title.endswith("(1)")
+    assert chapters[1].title.endswith("(2)")
+    assert chapters[0].title != chapters[1].title
+
+
+def test_unclosed_fence_falls_back_to_treating_every_heading_as_a_boundary():
+    # The fence opened after "# A" is never closed, which is plausible output
+    # from DOCX/PPTX/PDF extraction rather than hand-written markdown. Fence
+    # tracking must be abandoned for the whole document rather than silently
+    # swallowing "# B" and "# C" as body text of chapter "A".
+    md = "# A\n```\nx\n\n# B\ny\n\n# C\nz\n"
+    chapters = split_into_chapters(md, fallback_title="tai-lieu")
+    assert [c.title for c in chapters] == ["A", "B", "C"]
+
+
+def test_balanced_fences_still_protect_headings_inside_them():
+    # Regression guard: the fallback in the previous test must only trigger
+    # when fences are actually unbalanced. This mirrors the existing
+    # passing test but pins the balanced-fence behaviour explicitly now that
+    # fence tracking is conditional.
+    md = "# A\n```\n# khong phai heading\n```\nx\n\n# B\ny\n\n# C\nz\n"
+    chapters = split_into_chapters(md, fallback_title="tai-lieu")
+    assert [c.title for c in chapters] == ["A", "B", "C"]

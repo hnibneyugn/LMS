@@ -18,15 +18,29 @@ _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _FENCE = re.compile(r"^\s*(```|~~~)")
 
 
-def _heading_lines(lines: list[str]) -> list[tuple[int, int, str]]:
-    """Return (line_index, level, text) for headings outside fenced code."""
+def _fences_balanced(lines: list[str]) -> bool:
+    """Whether every ``` / ~~~ fence marker in `lines` has a matching partner.
+
+    Each fence line simply flips an open/closed flag, so a balanced document
+    has an even number of fence markers.
+    """
+    return sum(1 for line in lines if _FENCE.match(line)) % 2 == 0
+
+
+def _heading_lines(lines: list[str], track_fences: bool = True) -> list[tuple[int, int, str]]:
+    """Return (line_index, level, text) for headings outside fenced code.
+
+    `track_fences` is set to False by callers when the document's fences are
+    unbalanced (see `split_into_chapters`) so an unclosed fence can't latch
+    "inside code" for the rest of the document and hide every later heading.
+    """
     found: list[tuple[int, int, str]] = []
     in_fence = False
     for index, line in enumerate(lines):
-        if _FENCE.match(line):
+        if track_fences and _FENCE.match(line):
             in_fence = not in_fence
             continue
-        if in_fence:
+        if track_fences and in_fence:
             continue
         match = _HEADING.match(line)
         if match:
@@ -34,14 +48,16 @@ def _heading_lines(lines: list[str]) -> list[tuple[int, int, str]]:
     return found
 
 
-def _sections(lines: list[str], level: int) -> list[tuple[str, list[str]]]:
+def _sections(
+    lines: list[str], level: int, track_fences: bool = True
+) -> list[tuple[str, list[str]]]:
     """Split `lines` at headings of exactly `level`.
 
     Returns (title, body_lines) pairs. Text before the first heading comes back
     with the sentinel title "" so the caller can decide what to do with it.
     """
-    boundaries = [i for i, lvl, _ in _heading_lines(lines) if lvl == level]
-    titles = {i: text for i, lvl, text in _heading_lines(lines) if lvl == level}
+    boundaries = [i for i, lvl, _ in _heading_lines(lines, track_fences) if lvl == level]
+    titles = {i: text for i, lvl, text in _heading_lines(lines, track_fences) if lvl == level}
 
     sections: list[tuple[str, list[str]]] = []
     preamble_end = boundaries[0] if boundaries else len(lines)
@@ -75,27 +91,41 @@ def _hard_split(text: str) -> list[str]:
     return pieces
 
 
-def _shrink(title: str, body: str, level: int) -> list[tuple[str, str]]:
+def _numbered_label(title: str, n: int) -> str:
+    """Build a "<title> (<n>)" label that never exceeds MAX_TITLE_CHARS.
+
+    `title` may already be at the cap, so the suffix is reserved first and
+    the title is trimmed to make room for it -- truncation must never eat
+    into the suffix, or callers lose the only thing telling pieces apart.
+    """
+    suffix = f" ({n})"
+    room_for_title = max(0, MAX_TITLE_CHARS - len(suffix))
+    return f"{title[:room_for_title]}{suffix}"[:MAX_TITLE_CHARS]
+
+
+def _shrink(
+    title: str, body: str, level: int, track_fences: bool = True
+) -> list[tuple[str, str]]:
     """Break an oversized chapter down until every piece fits the cap."""
     if len(body) <= MAX_CHAPTER_CHARS:
         return [(title, body)]
 
     lines = body.splitlines()
-    deeper = [lvl for _, lvl, _ in _heading_lines(lines) if lvl > level]
+    deeper = [lvl for _, lvl, _ in _heading_lines(lines, track_fences) if lvl > level]
     if deeper:
         next_level = min(deeper)
         result: list[tuple[str, str]] = []
-        for sub_title, sub_lines in _sections(lines, next_level):
+        for sub_title, sub_lines in _sections(lines, next_level, track_fences):
             sub_body = "\n".join(sub_lines).strip()
             if not sub_body:
                 continue
             label = sub_title[:MAX_TITLE_CHARS] if sub_title else title
-            result.extend(_shrink(label, sub_body, next_level))
+            result.extend(_shrink(label, sub_body, next_level, track_fences))
         if result:
             return result
 
     return [
-        (f"{title} ({n + 1})", piece)
+        (_numbered_label(title, n + 1), piece)
         for n, piece in enumerate(_hard_split(body))
     ]
 
@@ -105,13 +135,24 @@ def split_into_chapters(md: str, fallback_title: str) -> list[Chapter]:
         return []
 
     lines = md.splitlines()
-    levels = [lvl for _, lvl, _ in _heading_lines(lines)]
+    # This module is fed by DOCX/PPTX/PDF extraction, not hand-written
+    # markdown, so a fence opened but never closed is a realistic failure
+    # mode. If we kept tracking fence state regardless, "inside code" would
+    # latch true for the rest of the document and every later heading would
+    # be swallowed as body text of one giant chapter. Per the project's
+    # graceful-degradation principle, a malformed input should degrade to a
+    # usable (if imperfectly split) result rather than lose all structure --
+    # mis-splitting inside a stray fence is far less damaging than that, and
+    # the user reviews/corrects the chapter list afterwards anyway. So: only
+    # trust fence tracking when the fences in the document are balanced.
+    track_fences = _fences_balanced(lines)
+    levels = [lvl for _, lvl, _ in _heading_lines(lines, track_fences)]
     if not levels:
         pairs = [(fallback_title[:MAX_TITLE_CHARS], md.strip())]
         return _to_chapters(pairs)
 
     top_level = min(levels)
-    sections = _sections(lines, top_level)
+    sections = _sections(lines, top_level, track_fences)
 
     pairs: list[tuple[str, str]] = []
     preamble = "\n".join(sections[0][1]).strip()
@@ -133,7 +174,7 @@ def split_into_chapters(md: str, fallback_title: str) -> list[Chapter]:
 
     expanded: list[tuple[str, str]] = []
     for title, body in pairs:
-        expanded.extend(_shrink(title, body, top_level))
+        expanded.extend(_shrink(title, body, top_level, track_fences))
     return _to_chapters(expanded)
 
 
