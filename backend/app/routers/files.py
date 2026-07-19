@@ -290,6 +290,13 @@ def process(
             status_code=status.HTTP_409_CONFLICT, detail="File đang được xử lý."
         )
 
+    if row["processing_status"] == "done":
+        # Reprocessing would overwrite draft_outline while `lessons` already
+        # point at this file. Confirmed is final -- see spec #1b decision B3.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="File đã được duyệt."
+        )
+
     try:
         exists = r2.object_exists(row["storage_path"])
     except Exception:

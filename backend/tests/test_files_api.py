@@ -273,6 +273,36 @@ def test_process_503_on_r2_outage_does_not_block_a_later_retry(repo, monkeypatch
     assert second.status_code == 202
 
 
+def test_process_on_confirmed_file_is_409(repo):
+    file_id = "f-done"
+    repo.rows[file_id] = {
+        "id": file_id,
+        "user_id": USER_ID,
+        "file_name": "x.docx",
+        "file_type": "docx",
+        "storage_path": f"{USER_ID}/{file_id}.docx",
+        "processing_status": "done",
+    }
+    res = client.post(f"/api/files/{file_id}/process", headers=auth_headers())
+    assert res.status_code == 409
+    assert res.json()["detail"] == "File đã được duyệt."
+    assert repo.rows[file_id]["processing_status"] == "done"
+
+
+def test_process_on_ready_for_review_still_reruns(repo):
+    file_id = "f-ready"
+    repo.rows[file_id] = {
+        "id": file_id,
+        "user_id": USER_ID,
+        "file_name": "x.docx",
+        "file_type": "docx",
+        "storage_path": f"{USER_ID}/{file_id}.docx",
+        "processing_status": "ready_for_review",
+    }
+    res = client.post(f"/api/files/{file_id}/process", headers=auth_headers())
+    assert res.status_code == 202
+
+
 # --- _Repo query building (real client) ---------------------------------------
 #
 # Everything above replaces the module-level `repo` with `_FakeRepo`, whose
