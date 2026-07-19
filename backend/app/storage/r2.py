@@ -39,11 +39,21 @@ def presign_put(key: str, content_length: int) -> str:
 
 
 def object_exists(key: str) -> bool:
+    """True if the object is there, False if it is genuinely absent.
+
+    Only a not-found response counts as False. Anything else (bad credentials,
+    wrong bucket, R2 outage) is re-raised: reporting an auth failure as "the
+    user never uploaded the file" would send them chasing the wrong problem.
+    """
+    client = _client()
     try:
-        _client().head_object(Bucket=settings.r2_bucket(), Key=key)
+        client.head_object(Bucket=settings.r2_bucket(), Key=key)
         return True
-    except _client().exceptions.ClientError:
-        return False
+    except client.exceptions.ClientError as err:
+        status_code = err.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if status_code == 404:
+            return False
+        raise
 
 
 def download(key: str) -> bytes:
