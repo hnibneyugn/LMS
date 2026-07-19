@@ -123,9 +123,20 @@ class FakeTable:
 
 
 class FakeClient:
-    def __init__(self, store, write_log=None):
+    def __init__(self, store, write_log=None, tables=None):
+        """`store` is the default backing dict handed to `.table(name)` for
+        any table not listed in `tables`. Every caller so far only touches
+        one table and doesn't care what it's called, so they keep passing a
+        single `store` unchanged. A caller that exercises more than one
+        table in the same test (e.g. `_Repo.list_lesson_slugs` reading
+        `lessons` alongside `_Repo` methods reading `user_files`) passes
+        `tables` to route specific table names to their own dict, so rows
+        from one table can never leak into a query against another.
+        """
         self._store = store
         self._write_log = write_log if write_log is not None else []
+        self._tables = tables or {}
 
-    def table(self, _name):
-        return FakeTable(self._store, self._write_log)
+    def table(self, name):
+        store = self._tables.get(name, self._store)
+        return FakeTable(store, self._write_log)

@@ -230,6 +230,22 @@ def test_confirm_rejects_wrong_status(repo, file_status, detail):
     assert repo.lessons == []
 
 
+def test_confirm_rejects_empty_outline(repo):
+    """A `ready_for_review` row with no draft chapters is an inconsistent
+    state (nothing was ever extracted), not a normal confirm -- it must be
+    refused with the same "not done processing" 409 the pending/processing
+    statuses get, not fall through to the range check below it."""
+    file_id = _ready_file(repo, chapters=0)
+    res = client.post(
+        f"/api/files/{file_id}/confirm",
+        json={"chapters": [{"title": "ok", "source_indexes": [0]}]},
+        headers=auth_headers(),
+    )
+    assert res.status_code == 409
+    assert res.json()["detail"] == "File chưa xử lý xong."
+    assert repo.lessons == []
+
+
 def test_confirm_on_another_users_file_is_404(repo):
     file_id = _ready_file(repo, user_id=OTHER_USER_ID)
     res = client.post(

@@ -289,7 +289,13 @@ def test_process_503_on_r2_outage_does_not_block_a_later_retry(repo, monkeypatch
 def real_repo(monkeypatch):
     """A REAL `_Repo` wired to a fake supabase client with a multi-user
     store, so tests exercise `_Repo`'s actual query-building code rather
-    than a hand-written substitute."""
+    than a hand-written substitute.
+
+    Two separate table stores (`user_files`, `lessons`) are wired through
+    `FakeClient(tables=...)` so a query against one table can never see rows
+    that only exist in the other -- `_Repo.list_lesson_slugs` reads
+    `lessons`, everything else here reads `user_files`.
+    """
     store = {
         "f1": {
             "id": "f1",
@@ -308,25 +314,26 @@ def real_repo(monkeypatch):
             "processing_status": "pending",
         },
     }
-    client_ = FakeClient(store)
+    lessons_store: dict = {}
+    client_ = FakeClient(store, tables={"user_files": store, "lessons": lessons_store})
     monkeypatch.setattr(files_router.db, "admin", lambda: client_)
-    return files_router._Repo(), store
+    return files_router._Repo(), store, lessons_store
 
 
 def test_real_repo_get_file_does_not_return_another_users_row(real_repo):
-    repo_, _store = real_repo
+    repo_, _store, _lessons = real_repo
     assert repo_.get_file("f2", USER_ID) is None
     assert repo_.get_file("f1", USER_ID) is not None
 
 
 def test_real_repo_list_files_only_returns_own_rows(real_repo):
-    repo_, _store = real_repo
+    repo_, _store, _lessons = real_repo
     ids = [r["id"] for r in repo_.list_files(USER_ID)]
     assert ids == ["f1"]
 
 
 def test_real_repo_set_status_does_not_modify_another_users_row(real_repo):
-    repo_, store = real_repo
+    repo_, store, _lessons = real_repo
     repo_.set_status("f2", USER_ID, "error")
     assert store["f2"]["processing_status"] == "pending"  # untouched
 
@@ -335,7 +342,7 @@ def test_real_repo_set_status_does_not_modify_another_users_row(real_repo):
 
 
 def test_real_repo_claim_for_processing_does_not_claim_another_users_row(real_repo):
-    repo_, store = real_repo
+    repo_, store, _lessons = real_repo
     claimed = repo_.claim_for_processing("f2", USER_ID)
     assert claimed == []
     assert store["f2"]["processing_status"] == "pending"
@@ -347,7 +354,7 @@ def test_real_repo_claim_for_processing_clears_previous_error_message(real_repo)
     earlier failed run has to be cleared, or a later failure (or the
     in-flight `processing` window itself) would keep showing the OLD
     extraction error while the status says something else is happening."""
-    repo_, store = real_repo
+    repo_, store, _lessons = real_repo
     store["f1"]["processing_status"] = "error"
     store["f1"]["error_message"] = "Loi trich xuat lan truoc."
 
@@ -361,11 +368,25 @@ def test_real_repo_claim_for_processing_only_lets_one_caller_win(real_repo):
     """Exercises the conditional UPDATE (`.neq("processing_status",
     "processing")`) that closes the check-then-act race: of two sequential
     claims on the same not-yet-processing row, only the first may succeed."""
-    repo_, _store = real_repo
+    repo_, _store, _lessons = real_repo
     first = repo_.claim_for_processing("f1", USER_ID)
     second = repo_.claim_for_processing("f1", USER_ID)
     assert len(first) == 1
     assert second == []
+
+
+def test_real_repo_list_lesson_slugs_only_returns_own_slugs(real_repo):
+    """`_Repo.list_lesson_slugs` backs the uniqueness check `confirm` runs
+    before writing new lessons. Without its `user_id` filter this would read
+    every user's slugs, so user A's new lesson could silently collide with
+    (and get suffixed against) a slug that only exists because user B has a
+    lesson with that name -- a cross-user side channel through slug clashes.
+    """
+    repo_, _store, lessons_store = real_repo
+    lessons_store["l1"] = {"id": "l1", "user_id": USER_ID, "slug": "mine-0"}
+    lessons_store["l2"] = {"id": "l2", "user_id": OTHER_USER_ID, "slug": "theirs-0"}
+
+    assert repo_.list_lesson_slugs(USER_ID) == ["mine-0"]
 
 
 # --- read --------------------------------------------------------------------

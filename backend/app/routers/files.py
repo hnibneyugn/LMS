@@ -174,9 +174,17 @@ def _validate_source_indexes(
     """Raise 400 if the requested chapter layout is not expressible in the UI.
 
     The rules mirror exactly what the review page can produce: merge only
-    joins adjacent chapters, and a draft chapter is either used once or
-    dropped. Anything else means a hand-crafted request, and accepting it
-    would let content be duplicated or reordered in ways the user never saw.
+    joins adjacent chapters (checked here as "ascends with no gaps"), and a
+    draft chapter is either used once or dropped. Anything else means a
+    hand-crafted request, and accepting it would let a source chapter be
+    duplicated across two lessons, or a merge splice together a
+    non-adjacent range.
+
+    What this does NOT check is ordering *across* chapters -- e.g.
+    `[{indexes:[2]}, {indexes:[0]}]` is accepted and produces lessons in
+    that order. `order_index` follows the request array by design, so which
+    lesson comes first is deliberately the client's choice, not something
+    this function polices.
     """
     seen: set[int] = set()
     for chapter in chapters:
