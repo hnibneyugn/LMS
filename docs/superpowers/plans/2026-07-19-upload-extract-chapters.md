@@ -715,8 +715,10 @@ git commit -m "feat(ingest): split markdown into capped chapters"
 **Files:**
 - Create: `backend/app/ingest/extractors/__init__.py`
 - Create: `backend/app/ingest/extractors/{md,docx,pptx,pdf}.py`
-- Create: `backend/tests/fixtures/` (sinh bằng script, xem Step 2)
 - Test: `backend/tests/test_extractors.py`
+
+Không cần thư mục `tests/fixtures/`: test tự sinh file mẫu trong bộ nhớ bằng chính
+`python-docx`/`python-pptx`/`pypdf`, khỏi commit file nhị phân.
 
 **Interfaces:**
 - Produces:
@@ -1169,7 +1171,6 @@ row as an actionable Vietnamese message so #1b can offer a retry.
 """
 
 import logging
-import os
 from pathlib import Path
 
 from app import db
@@ -1246,8 +1247,6 @@ def _fail(file_id: str, message: str) -> None:
 def _update(file_id: str, values: dict) -> None:
     db.admin().table("user_files").update(values).eq("id", file_id).execute()
 ```
-
-Bỏ dòng `import os` nếu linter báo thừa.
 
 - [ ] **Step 4: Chạy test cho tới khi xanh**
 
