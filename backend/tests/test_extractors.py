@@ -296,7 +296,10 @@ def test_docx_normal_paragraphs_with_numbering_become_headings():
     assert "Nội dung chương một." in md
 
 
-def test_docx_numbered_list_prose_is_not_turned_into_headings():
+def test_docx_numbered_prose_ending_mid_sentence_is_not_turned_into_headings():
+    """These are 'Normal'-styled paragraphs, so this exercises the
+    trailing-punctuation rule in numbered_heading_level (the text ends in
+    '.'), not the is_list bypass in docx.py -- see the test below for that."""
     from app.ingest.extractors import docx as docx_extractor
 
     data = _docx_bytes(
@@ -307,6 +310,26 @@ def test_docx_numbered_list_prose_is_not_turned_into_headings():
     )
     md = docx_extractor.extract(data)
     assert "#" not in md.replace("\\#", "")
+
+
+def test_docx_list_style_paragraphs_are_not_turned_into_headings():
+    """Regression for docx.py:35 ('and not is_list'): a real Word list
+    paragraph must stay a list item even when its text matches a numbering
+    heuristic pattern that would otherwise read as a heading ('1 Mục đích'
+    has no trailing punctuation, so the trailing-punctuation rule alone
+    would not stop it). Deleting 'and not is_list' from docx.py makes this
+    test fail -- see task-1-report.md for the mutation check."""
+    from app.ingest.extractors import docx as docx_extractor
+
+    data = _docx_bytes(
+        [
+            ("List Number", "1 Mục đích"),
+            ("List Bullet", "1 Mục đích"),
+        ]
+    )
+    md = docx_extractor.extract(data)
+    assert md.count("- 1 Mục đích") == 2
+    assert "#" not in md
 
 
 def test_docx_real_heading_styles_still_win():

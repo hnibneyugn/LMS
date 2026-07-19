@@ -14,10 +14,27 @@ from app.ingest.extractors._numbering import numbered_heading_level
         "Chapter 5 Overview",
         "I. Mở đầu",
         "IV. Tổng kết",
+        "XX. Phụ lục",
     ],
 )
 def test_word_and_roman_patterns_are_level_two(text):
     assert numbered_heading_level(text) == 2
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # "CLI" and "XL" are themselves well-formed Roman numerals (151 and
+        # 40) -- validating Roman-numeral grammar would still accept them.
+        # What must reject them is the restricted I/V/X alphabet (no L) and
+        # case-sensitivity (no re.IGNORECASE).
+        "CLI. Cong cu dong lenh manh me",
+        "XL. Kich thuoc lon",
+        "Civic. New model",
+    ],
+)
+def test_roman_pattern_does_not_match_ordinary_uppercase_words(text):
+    assert numbered_heading_level(text) is None
 
 
 @pytest.mark.parametrize(

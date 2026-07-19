@@ -21,7 +21,21 @@ _KEYWORD = re.compile(
     r"^(chương|bài|phần|mục|chapter)\s+\d+\b",
     re.IGNORECASE,
 )
-_ROMAN = re.compile(r"^[IVXLC]+\.\s+\S", re.IGNORECASE)
+# Deliberately case-sensitive (no re.IGNORECASE) and restricted to I/V/X --
+# NOT the full Roman alphabet. Character-class membership alone can't tell a
+# Roman-numeral heading from an ordinary word: "CLI" and "XL" are both
+# well-formed Roman numerals (151 and 40) yet also a common abbreviation
+# ("CLI. Cong cu...") and a clothing size ("XL. Kich thuoc lon"), and validating
+# stricter Roman-numeral grammar wouldn't change that -- they'd still parse.
+# What actually discriminates a real heading here is that section numbers are
+# small and headings are uppercase. Dropping L/C/D/M caps what this can match
+# at "XXXIX" (39) and dropping IGNORECASE rejects mixed-case words like
+# "Civic."; combined with the length cap below this only recognises I..XX or
+# so, which is every Roman-numbered chapter/section seen in practice. The
+# tradeoff: a document that genuinely numbers a section "L" or higher in
+# Roman numerals won't be detected -- accepted, because that doesn't occur in
+# personal study documents.
+_ROMAN = re.compile(r"^[IVX]{1,4}\.\s+\S")
 # Captures the dotted number so its depth can set the heading level.
 _DECIMAL = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+\S")
 
@@ -31,8 +45,12 @@ def numbered_heading_level(text: str) -> int | None:
 
     Returns None for anything else. Level 2 is the floor because real Word
     Heading styles already occupy 1..3 via docx._heading_level -- a heuristic
-    hit must never outrank a genuine top-level heading and change which level
-    the splitter picks as its chapter boundary.
+    hit is guaranteed to never outrank a genuine `Heading 1` (markdown `#`),
+    since level 1 is never returned here. That guarantee does NOT extend to
+    every real heading: in a document whose only heading style in use is
+    `Heading 3` (markdown `###`), a heuristic level-2 hit is shallower and
+    becomes the splitter's chapter boundary instead. This is accepted --
+    such a document has no level-1/2 heading for the heuristic to lose to.
     """
     stripped = text.strip()
     if not stripped or len(stripped) > _MAX_HEADING_CHARS:
