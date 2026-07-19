@@ -20,6 +20,8 @@ create unique index if not exists lessons_user_slug_idx on lessons (user_id, slu
 drop policy if exists "lessons_select" on lessons;
 
 alter table lessons enable row level security;
+-- CREATE POLICY has no IF NOT EXISTS, so drop first to keep this file re-runnable.
+drop policy if exists "lessons_own" on lessons;
 create policy "lessons_own" on lessons
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
