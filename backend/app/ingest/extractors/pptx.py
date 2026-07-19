@@ -4,6 +4,7 @@ import io
 
 from pptx import Presentation
 
+from app.ingest.extractors._escaping import escape_accidental_headings
 from app.ingest.extractors.errors import ExtractError
 
 
@@ -24,7 +25,7 @@ def extract(data: bytes) -> str:
                 continue
             text = shape.text_frame.text.strip()
             if text and text != title:
-                parts.append(text)
+                parts.append(escape_accidental_headings(text))
     return "\n\n".join(parts).strip()
 
 

@@ -9,6 +9,7 @@ import io
 
 from pypdf import PdfReader
 
+from app.ingest.extractors._escaping import escape_accidental_headings
 from app.ingest.extractors.errors import ExtractError
 
 PAGES_PER_CHAPTER = 10
@@ -36,7 +37,7 @@ def extract(data: bytes) -> str:
         if index in titles:
             parts.append(f"## {titles[index]}")
         if text:
-            parts.append(text)
+            parts.append(escape_accidental_headings(text))
     return "\n\n".join(parts).strip()
 
 

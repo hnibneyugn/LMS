@@ -196,3 +196,67 @@ def test_corrupt_bytes_raise_extract_error_not_a_library_exception():
     for file_type in ("docx", "pptx", "pdf"):
         with pytest.raises(ExtractError):
             EXTRACTORS[file_type](b"day khong phai file hop le")
+
+
+# --- stray '#' in body text must not fabricate heading boundaries ------------
+#
+# Slides, PDFs, and DOCX bodies routinely contain shell/Python snippets
+# ("# comment") or other lines that happen to start with '#'. The splitter's
+# only rule is "cut on the shallowest heading level present" -- one such body
+# line at level 1 would outrank every deliberately injected '## ...' boundary
+# and collapse the whole document into a single chapter. The extractors must
+# neutralise accidental leading '#' in body text they did NOT turn into a
+# heading themselves.
+
+
+def test_pptx_body_text_with_a_leading_hash_does_not_collapse_the_document():
+    presentation = Presentation()
+    bodies = ("noi dung binh thuong", "# not a real heading\nnoi dung tiep theo")
+    for title_text, body_text in zip(("Slide mot", "Slide hai"), bodies):
+        slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+        slide.shapes.title.text = title_text
+        slide.placeholders[1].text = body_text
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+
+    result = EXTRACTORS["pptx"](buffer.getvalue())
+    chapters = split_into_chapters(result, fallback_title="tai-lieu")
+
+    assert [c.title for c in chapters] == ["Slide mot", "Slide hai"]
+    # The stray '#' must still be readable in the rendered body, just not as
+    # a heading marker.
+    assert "not a real heading" in chapters[1].content_md
+
+
+def test_pdf_body_text_with_a_leading_hash_does_not_collapse_the_document():
+    page_texts = [
+        "Trang mot noi dung binh thuong day du de vuot qua nguong toi thieu can thiet.",
+        "# khong phai heading that",
+        "Trang ba noi dung tiep theo cung day du de vuot qua nguong toi thieu can thiet.",
+    ]
+    pdf_bytes = _pdf_with_text_pages(
+        page_texts, outline=[(0, "Phan mot"), (2, "Phan hai")]
+    )
+
+    result = pdf_extractor.extract(pdf_bytes)
+    chapters = split_into_chapters(result, fallback_title="tai-lieu")
+
+    assert [c.title for c in chapters] == ["Phan mot", "Phan hai"]
+    assert "khong phai heading that" in chapters[0].content_md
+
+
+def test_docx_body_text_with_a_leading_hash_does_not_collapse_the_document():
+    document = Document()
+    document.add_heading("Chuong mot", level=2)
+    document.add_paragraph("noi dung mot")
+    document.add_heading("Chuong hai", level=2)
+    document.add_paragraph("# khong phai heading that")
+    document.add_paragraph("noi dung hai")
+    buffer = io.BytesIO()
+    document.save(buffer)
+
+    result = EXTRACTORS["docx"](buffer.getvalue())
+    chapters = split_into_chapters(result, fallback_title="tai-lieu")
+
+    assert [c.title for c in chapters] == ["Chuong mot", "Chuong hai"]
+    assert "khong phai heading that" in chapters[1].content_md

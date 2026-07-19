@@ -60,11 +60,13 @@ class _FakeRepo:
     def list_files(self, user_id):
         return [r for r in self.rows.values() if r["user_id"] == user_id]
 
-    def set_status(self, file_id, user_id, status):
+    def set_status(self, file_id, user_id, status, error_message=None):
         row = self.rows.get(file_id)
         if row is None or row["user_id"] != user_id:
             return
         row["processing_status"] = status
+        if error_message is not None:
+            row["error_message"] = error_message
 
     def claim_for_processing(self, file_id, user_id):
         row = self.rows.get(file_id)
@@ -73,6 +75,7 @@ class _FakeRepo:
         if row["processing_status"] == "processing":
             return []
         row["processing_status"] = "processing"
+        row["error_message"] = None
         return [row]
 
 
@@ -199,6 +202,50 @@ def test_process_errors_when_the_object_is_missing_from_r2(repo, monkeypatch):
     res = client.post(f"/api/files/{file_id}/process", headers=_headers())
     assert res.status_code == 400
     assert repo.rows[file_id]["processing_status"] == "error"
+
+
+def test_process_errors_when_the_object_is_missing_from_r2_sets_a_message(repo, monkeypatch):
+    """The R2-missing path must not leave the row's status and message
+    disagreeing with each other -- 'error' status with no (or a stale)
+    message misleads the user about what actually happened."""
+    monkeypatch.setattr(files_router.r2, "object_exists", lambda k: False)
+    file_id = _make_row(repo)
+    res = client.post(f"/api/files/{file_id}/process", headers=_headers())
+    assert res.status_code == 400
+    assert repo.rows[file_id]["error_message"]
+
+
+def test_process_retry_clears_the_previous_runs_error_message(repo):
+    """A retry that succeeds in claiming the row for processing must not
+    leave the previous failed run's error_message sitting on a row whose
+    status now says 'processing' -- the poller would show a stale error for
+    the whole processing window even though nothing is currently wrong."""
+    file_id = _make_row(repo, status="error")
+    repo.rows[file_id]["error_message"] = "Loi trich xuat lan truoc."
+
+    res = client.post(f"/api/files/{file_id}/process", headers=_headers())
+
+    assert res.status_code == 202
+    assert repo.rows[file_id]["error_message"] is None
+
+
+def test_retry_failing_the_r2_check_does_not_keep_the_previous_runs_error_message(
+    repo, monkeypatch
+):
+    """A retry that fails the R2 head-check must land in 'error' showing the
+    NEW reason (file missing from storage), not the previous run's
+    extraction failure message -- status and message must always agree."""
+    file_id = _make_row(repo, status="error")
+    old_message = "Loi trich xuat lan truoc: dinh dang khong hop le."
+    repo.rows[file_id]["error_message"] = old_message
+    monkeypatch.setattr(files_router.r2, "object_exists", lambda k: False)
+
+    res = client.post(f"/api/files/{file_id}/process", headers=_headers())
+
+    assert res.status_code == 400
+    assert repo.rows[file_id]["processing_status"] == "error"
+    assert repo.rows[file_id]["error_message"] != old_message
+    assert repo.rows[file_id]["error_message"]
 
 
 def test_process_a_second_time_before_the_first_finishes_is_409(repo):
@@ -388,6 +435,22 @@ def test_real_repo_claim_for_processing_does_not_claim_another_users_row(real_re
     claimed = repo_.claim_for_processing("f2", _USER_ID)
     assert claimed == []
     assert store["f2"]["processing_status"] == "pending"
+
+
+def test_real_repo_claim_for_processing_clears_previous_error_message(real_repo):
+    """A retry must not carry the previous run's error_message forward: once
+    a row is claimed for a new processing attempt, any stale message from an
+    earlier failed run has to be cleared, or a later failure (or the
+    in-flight `processing` window itself) would keep showing the OLD
+    extraction error while the status says something else is happening."""
+    repo_, store = real_repo
+    store["f1"]["processing_status"] = "error"
+    store["f1"]["error_message"] = "Loi trich xuat lan truoc."
+
+    claimed = repo_.claim_for_processing("f1", _USER_ID)
+
+    assert claimed[0]["error_message"] is None
+    assert store["f1"]["error_message"] is None
 
 
 def test_real_repo_claim_for_processing_only_lets_one_caller_win(real_repo):

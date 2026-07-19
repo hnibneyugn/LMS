@@ -5,6 +5,7 @@ import re
 
 from docx import Document
 
+from app.ingest.extractors._escaping import escape_accidental_headings
 from app.ingest.extractors.errors import ExtractError
 
 _STYLE_ID_HEADING = re.compile(r"^heading(\d+)$")
@@ -31,9 +32,9 @@ def extract(data: bytes) -> str:
         if level is not None:
             parts.append(f"{'#' * level} {text}")
         elif "list" in (paragraph.style.name or "").lower():
-            parts.append(f"- {text}")
+            parts.append(f"- {escape_accidental_headings(text)}")
         else:
-            parts.append(text)
+            parts.append(escape_accidental_headings(text))
     return "\n\n".join(parts).strip()
 
 

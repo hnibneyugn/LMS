@@ -65,10 +65,28 @@ class _Repo:
         )
         return result.data or []
 
-    def set_status(self, file_id: str, user_id: str, status_value: str) -> None:
-        db.admin().table("user_files").update(
-            {"processing_status": status_value}
-        ).eq("id", file_id).eq("user_id", user_id).execute()
+    def set_status(
+        self,
+        file_id: str,
+        user_id: str,
+        status_value: str,
+        error_message: str | None = None,
+    ) -> None:
+        """Update processing_status, and error_message alongside it whenever
+        the caller passes one -- callers that report a failure must set both
+        in the same write, or the row would show a status and a message from
+        two different runs. `error_message` defaults to None (meaning "leave
+        it untouched") rather than always being written, so plain status
+        transitions that carry no message of their own (there are none left
+        that report failure, but the parameter must not force every caller
+        to pass one) don't clobber an existing value they know nothing about.
+        """
+        values: dict = {"processing_status": status_value}
+        if error_message is not None:
+            values["error_message"] = error_message
+        db.admin().table("user_files").update(values).eq("id", file_id).eq(
+            "user_id", user_id
+        ).execute()
 
     def claim_for_processing(self, file_id: str, user_id: str) -> list[dict]:
         """Atomically transition a row to 'processing', but only if it is not
@@ -82,11 +100,17 @@ class _Repo:
         The caller must have already confirmed the row exists and belongs to
         user_id (e.g. via get_file) to tell 404 apart from "lost the race":
         an empty result here means "already processing", not "not found".
+
+        Also clears error_message: a claimed row is starting a fresh
+        processing attempt, and a retry must not carry the previous run's
+        error text into the new attempt's `processing` window (or into
+        `error` again if the new attempt happens to fail before writing its
+        own message).
         """
         result = (
             db.admin()
             .table("user_files")
-            .update({"processing_status": "processing"})
+            .update({"processing_status": "processing", "error_message": None})
             .eq("id", file_id)
             .eq("user_id", user_id)
             .neq("processing_status", "processing")
@@ -163,10 +187,11 @@ def process(
         )
 
     if not exists:
-        repo.set_status(file_id, user.user_id, "error")
+        missing_object_message = "Chưa thấy file trên kho lưu trữ — hãy tải lên lại."
+        repo.set_status(file_id, user.user_id, "error", error_message=missing_object_message)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Chưa thấy file trên kho lưu trữ — hãy tải lên lại.",
+            detail=missing_object_message,
         )
 
     # A single conditional UPDATE, not a read-then-write: closes the race
