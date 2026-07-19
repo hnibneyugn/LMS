@@ -53,13 +53,21 @@ def _heading_level(style) -> int | None:
     signal, for styles that happen to carry that name without a `base_style`
     link to a built-in heading style.
     """
-    seen_ids: set[int] = set()
+    # python-docx hands back a NEW proxy object on every `.style`/`.base_style`
+    # access, so identity comparison cannot spot a cycle -- track the style_id
+    # string, which is stable across proxies. The depth cap is the backstop for
+    # a chain whose styles have no ids at all.
+    seen_ids: set[str] = set()
     current = style
     depth = 0
-    while current is not None and depth < _MAX_STYLE_DEPTH and id(current) not in seen_ids:
-        seen_ids.add(id(current))
+    while current is not None and depth < _MAX_STYLE_DEPTH:
+        style_id = getattr(current, "style_id", None)
+        if style_id is not None:
+            if style_id in seen_ids:
+                return None
+            seen_ids.add(style_id)
         depth += 1
-        level = _level_from_style_id(getattr(current, "style_id", None))
+        level = _level_from_style_id(style_id)
         if level is None:
             level = _level_from_name(getattr(current, "name", None))
         if level is not None:
