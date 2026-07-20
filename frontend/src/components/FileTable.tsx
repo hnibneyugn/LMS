@@ -105,6 +105,7 @@ export function FileTable({
             {file.processing_status === "ready_for_review" && (
               <Button
                 size="sm"
+                nativeButton={false}
                 render={<Link to={`/files/${file.id}/review`}>Duyệt chương</Link>}
               />
             )}
@@ -112,6 +113,7 @@ export function FileTable({
               <Button
                 size="sm"
                 variant="outline"
+                nativeButton={false}
                 render={<Link to={`/files/${file.id}/review`}>Xem lại</Link>}
               />
             )}
