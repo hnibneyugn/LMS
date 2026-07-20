@@ -190,6 +190,8 @@ Từ review #1b (đã triage, không chặn gì):
 - [ ] PUT lên R2 lỗi sẽ để lại một dòng `pending` mồ côi; chưa có endpoint xoá.
 - [ ] `refresh()` trong `Files.tsx` không có cơ chế chặn các lần gọi chồng nhau, nên fetch chồng chéo
       có thể thoáng hiện dữ liệu cũ.
+- [x] ~~Lỗi tầng mạng lọt ra nguyên văn tiếng Anh `Failed to fetch`~~ — đã bọc try/catch ở `apiFetch`
+      và ở bước PUT lên R2, giờ báo tiếng Việt. (Phát hiện khi chạy thật: quên bật backend.)
 - [ ] Ngưỡng 10 phút kẹt `processing` tính từ `uploaded_at` vì chưa có cột đánh dấu thời điểm bắt đầu xử lý.
 - [ ] Độ dài slug có thể vượt quá 80 ký tự đã tài liệu hoá một khi nối thêm `-{order_index}` và hậu tố
       `-N` (vô hại: cột DB là `text` không giới hạn).

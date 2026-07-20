@@ -142,6 +142,10 @@ cd frontend && npm install && npm run dev            # http://localhost:5173
 `docker-compose.yml` có sẵn nếu muốn chạy cả hai bằng container, nhưng dev thường ngày dùng venv +
 `npm run dev` cho nhẹ.
 
+**Phải chạy CẢ HAI tiến trình.** Chỉ mở `npm run dev` mà quên uvicorn thì trang tải được nhưng mọi
+lời gọi API hỏng — triệu chứng là "Không kết nối được máy chủ." trên giao diện. Kiểm nhanh bằng
+`curl http://localhost:8000/api/health`.
+
 ## Verify sau mỗi thay đổi
 
 - Backend: `pytest` từ `backend/` — phải xanh và **output sạch** (không warning).

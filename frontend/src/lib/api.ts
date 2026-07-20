@@ -19,10 +19,24 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   const token = data.session?.access_token
   if (!token) throw new Error("Chưa đăng nhập")
 
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: { ...(options.headers ?? {}), Authorization: `Bearer ${token}` },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: { ...(options.headers ?? {}), Authorization: `Bearer ${token}` },
+    })
+  } catch (err) {
+    // fetch rejects (rather than resolving with a status) when the request
+    // never reached a server at all: the backend is not running, the machine
+    // is offline, CORS blocked it. The browser's own message for this is
+    // "Failed to fetch", in English, which tells the user nothing -- and it
+    // cost a real debugging session once already.
+    console.error("apiFetch network failure", path, err)
+    throw new ApiError(
+      "Không kết nối được máy chủ. Kiểm tra kết nối mạng rồi thử lại.",
+      0,
+    )
+  }
 
   if (!res.ok) {
     // The backend writes user-facing Vietnamese into `detail`; surfacing it

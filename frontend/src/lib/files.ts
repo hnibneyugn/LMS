@@ -100,7 +100,16 @@ export async function uploadFile(
   // Plain fetch, NOT apiFetch: a presigned URL carries its own signature and
   // adding an Authorization header invalidates it. This is the only place in
   // the app that talks to something other than our own backend.
-  const putRes = await fetch(upload_url, { method: "PUT", body: file })
+  let putRes: Response
+  try {
+    putRes = await fetch(upload_url, { method: "PUT", body: file })
+  } catch (err) {
+    // Same trap as apiFetch, and likelier here: a 20MB upload has plenty of
+    // time for the connection to drop mid-flight, and the raw rejection is an
+    // English "Failed to fetch".
+    console.error("R2 PUT network failure", err)
+    throw new Error("Mất kết nối khi đang tải file lên. Hãy thử lại.")
+  }
   if (!putRes.ok) throw new Error("Tải file lên thất bại. Hãy thử lại.")
 
   onStep("processing")
