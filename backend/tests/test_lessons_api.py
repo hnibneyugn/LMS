@@ -115,3 +115,80 @@ def test_list_sorts_orphan_lessons_last(repo):
 
 def test_list_requires_a_token(repo):
     assert client.get("/api/lessons").status_code == 401
+
+
+# --- detail ------------------------------------------------------------------
+
+def test_detail_returns_content_and_neighbours(repo):
+    repo.files["f1"] = {"user_id": USER_ID, "file_name": "giao-trinh.docx"}
+    repo.lessons = [
+        make_lesson("l1", "gt-0", "Chương 1", 0, "f1"),
+        make_lesson("l2", "gt-1", "Chương 2", 1, "f1"),
+        make_lesson("l3", "gt-2", "Chương 3", 2, "f1"),
+    ]
+
+    body = client.get("/api/lessons/gt-1", headers=auth_headers()).json()
+
+    assert body["content_md"] == "# Chương 2\n\nnội dung"
+    assert body["source_file_name"] == "giao-trinh.docx"
+    assert body["prev"] == {"slug": "gt-0", "title": "Chương 1"}
+    assert body["next"] == {"slug": "gt-2", "title": "Chương 3"}
+
+
+def test_detail_neighbours_are_null_at_both_ends(repo):
+    repo.files["f1"] = {"user_id": USER_ID, "file_name": "giao-trinh.docx"}
+    repo.lessons = [
+        make_lesson("l1", "gt-0", "Chương 1", 0, "f1"),
+        make_lesson("l2", "gt-1", "Chương 2", 1, "f1"),
+    ]
+
+    first = client.get("/api/lessons/gt-0", headers=auth_headers()).json()
+    last = client.get("/api/lessons/gt-1", headers=auth_headers()).json()
+
+    assert first["prev"] is None
+    assert first["next"] == {"slug": "gt-1", "title": "Chương 2"}
+    assert last["prev"] == {"slug": "gt-0", "title": "Chương 1"}
+    assert last["next"] is None
+
+
+def test_detail_neighbours_never_cross_into_another_file(repo):
+    repo.files["f1"] = {"user_id": USER_ID, "file_name": "a.docx"}
+    repo.files["f2"] = {"user_id": USER_ID, "file_name": "b.docx"}
+    repo.lessons = [
+        make_lesson("l1", "a-0", "A chương 1", 0, "f1"),
+        make_lesson("l2", "b-0", "B chương 1", 0, "f2"),
+    ]
+
+    body = client.get("/api/lessons/a-0", headers=auth_headers()).json()
+
+    assert body["prev"] is None
+    assert body["next"] is None
+
+
+def test_detail_of_an_orphan_lesson_has_no_neighbours(repo):
+    repo.lessons = [make_lesson("l0", "mo-coi", "Mồ côi", 0, None)]
+
+    body = client.get("/api/lessons/mo-coi", headers=auth_headers()).json()
+
+    assert body["prev"] is None
+    assert body["next"] is None
+    assert body["source_file_name"] is None
+
+
+def test_detail_of_another_users_lesson_is_404_not_403(repo):
+    # 403 would confirm the slug exists; 404 gives nothing away.
+    repo.lessons = [make_lesson("l9", "cua-ho", "Của họ", 0, None, user_id=OTHER_USER_ID)]
+
+    res = client.get("/api/lessons/cua-ho", headers=auth_headers())
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Không tìm thấy bài học."
+
+
+def test_detail_of_an_unknown_slug_is_404(repo):
+    res = client.get("/api/lessons/khong-co", headers=auth_headers())
+    assert res.status_code == 404
+
+
+def test_detail_requires_a_token(repo):
+    assert client.get("/api/lessons/gt-0").status_code == 401

@@ -28,6 +28,17 @@ class LessonOut(BaseModel):
     completed_at: str | None = None
 
 
+class LessonNav(BaseModel):
+    slug: str
+    title: str
+
+
+class LessonDetailOut(LessonOut):
+    content_md: str
+    prev: LessonNav | None = None
+    next: LessonNav | None = None
+
+
 class _Repo:
     """Thin data layer. Isolated in a class so tests can swap it wholesale.
 
@@ -65,6 +76,21 @@ class _Repo:
         )
         return {row["lesson_id"]: row for row in (result.data or [])}
 
+    def get_lesson_by_slug(self, user_id: str, slug: str) -> dict | None:
+        # Slug is unique per user (lessons_user_slug_idx), not globally, so
+        # both columns are needed to identify a row.
+        result = (
+            db.admin()
+            .table("lessons")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("slug", slug)
+            .maybe_single()
+            .execute()
+        )
+        # postgrest's maybe_single returns None itself when nothing matched.
+        return result.data if result else None
+
 
 repo = _Repo()
 
@@ -93,3 +119,41 @@ def list_lessons(user: CurrentUser = Depends(get_current_user)):
     rows = [_merge(r, file_names, progress) for r in repo.list_lessons(user.user_id)]
     rows.sort(key=_sort_key)
     return rows
+
+
+def _neighbours(row: dict, all_rows: list[dict]) -> tuple[dict | None, dict | None]:
+    """Previous/next chapter within the SAME source file, by order_index.
+
+    An orphan lesson has no file to be adjacent within, so it gets neither.
+    """
+    file_id = row.get("source_file_id")
+    if file_id is None:
+        return None, None
+
+    siblings = sorted(
+        (r for r in all_rows if r.get("source_file_id") == file_id),
+        key=lambda r: r["order_index"],
+    )
+    ids = [r["id"] for r in siblings]
+    if row["id"] not in ids:
+        return None, None
+
+    index = ids.index(row["id"])
+    before = siblings[index - 1] if index > 0 else None
+    after = siblings[index + 1] if index + 1 < len(siblings) else None
+
+    def nav(target: dict | None) -> dict | None:
+        return None if target is None else {"slug": target["slug"], "title": target["title"]}
+
+    return nav(before), nav(after)
+
+
+@router.get("/{slug}", response_model=LessonDetailOut)
+def get_lesson(slug: str, user: CurrentUser = Depends(get_current_user)):
+    row = repo.get_lesson_by_slug(user.user_id, slug)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+
+    merged = _merge(row, repo.list_file_names(user.user_id), repo.list_progress(user.user_id))
+    before, after = _neighbours(row, repo.list_lessons(user.user_id))
+    return {**merged, "prev": before, "next": after}
