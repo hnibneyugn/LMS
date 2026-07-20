@@ -94,8 +94,17 @@ docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
 
 ## Auth (đã chạy thật)
 
-- Đăng nhập Magic Link, **invite-only** cưỡng chế bằng `signInWithOtp({ shouldCreateUser: false })`
-  — email không có sẵn trong `auth.users` bị từ chối, không tạo user mới.
+- Hai cách đăng nhập, cùng một tài khoản:
+  - **Mật khẩu** (`signInWithPassword`) — đường chính, vào thẳng không cần mở mail.
+  - **Magic Link** (`signInWithOtp`) — đường lui khi quên mật khẩu, và là lối vào duy nhất cho
+    thành viên chưa được đặt mật khẩu.
+- **Invite-only** cưỡng chế bằng `shouldCreateUser: false` ở luồng OTP; luồng mật khẩu **không bao
+  giờ gọi `signUp`**, nên cũng không tạo được user mới. Thêm thành viên = mời qua Supabase.
+- Đặt mật khẩu cho thành viên đã mời: `python backend/scripts/set_password.py <email>` (dùng
+  service-role key, chạy ở máy mình). Script từ chối nếu email chưa được mời.
+- Thông báo lỗi khi sai mật khẩu và khi email không tồn tại **giống hệt nhau** ("Email hoặc mật khẩu
+  không đúng.") — Supabase trả cùng một `invalid_credentials` cho cả hai, đừng tách ra thành hai
+  thông báo khác nhau vì như vậy là để lộ ai đang là thành viên.
 - Bảo vệ route ở frontend bằng component `ProtectedRoute` (SPA không có middleware SSR).
 - Backend verify JWT qua **JWKS / ES256** (project này ký bất đối xứng), lấy từ
   `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`. **Không cần shared JWT secret.**

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input"
 
 export function Login() {
   const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [busy, setBusy] = useState(false)
   const [state, setState] = useState<"idle" | "sent" | "error">("idle")
   const [message, setMessage] = useState("")
   const [checking, setChecking] = useState(true)
@@ -31,8 +33,38 @@ export function Login() {
     )
   }, [searchParams])
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault()
+    setState("idle")
+    setBusy(true)
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) {
+        setState("error")
+        // Supabase deliberately returns the same "Invalid login credentials"
+        // for a wrong password and an unknown email, so it cannot be used to
+        // discover who is a member. Keep the message equally vague.
+        setMessage(
+          error.status === 429
+            ? "Bạn thử lại quá nhiều lần. Đợi một phút rồi thử lại."
+            : "Email hoặc mật khẩu không đúng.",
+        )
+        return
+      }
+      // ProtectedRoute picks the session up; the redirect below handles the rest.
+      setHasSession(true)
+    } catch (err) {
+      console.error("signInWithPassword threw", err)
+      setState("error")
+      setMessage("Không đăng nhập được. Vui lòng thử lại.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleMagicLink() {
+    setState("idle")
+    setBusy(true)
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -61,6 +93,8 @@ export function Login() {
       console.error("signInWithOtp threw", err)
       setState("error")
       setMessage("Không gửi được link đăng nhập. Vui lòng thử lại.")
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -75,18 +109,39 @@ export function Login() {
           Đã gửi link đăng nhập tới <b>{email}</b>. Kiểm tra hộp thư.
         </p>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handlePasswordLogin} className="space-y-3">
           <Input
             type="email"
             required
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="email@example.com"
           />
-          <Button type="submit" className="w-full">
-            Gửi link đăng nhập
+          <Input
+            type="password"
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Mật khẩu"
+          />
+          <Button type="submit" className="w-full" disabled={busy}>
+            {busy ? "Đang đăng nhập…" : "Đăng nhập"}
           </Button>
           {state === "error" && <p className="text-sm text-red-600">{message}</p>}
+          <div className="pt-2 text-center">
+            <button
+              type="button"
+              // Kept as the fallback for a forgotten password, and as the only
+              // way in for a member who has not had one set yet.
+              onClick={handleMagicLink}
+              disabled={busy || !email}
+              className="text-sm text-gray-600 underline disabled:opacity-50"
+            >
+              Quên mật khẩu? Gửi link đăng nhập
+            </button>
+          </div>
         </form>
       )}
     </div>
