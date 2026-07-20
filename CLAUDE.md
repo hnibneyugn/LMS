@@ -105,8 +105,16 @@ docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
   mã trở nên vô dụng. Dashboard → Authentication → Email Templates → Magic Link.
 - **Invite-only** cưỡng chế bằng `shouldCreateUser: false` ở luồng OTP; luồng mật khẩu **không bao
   giờ gọi `signUp`**, nên cũng không tạo được user mới. Thêm thành viên = mời qua Supabase.
-- Đặt mật khẩu cho thành viên đã mời: `python backend/scripts/set_password.py <email>` (dùng
-  service-role key, chạy ở máy mình). Script từ chối nếu email chưa được mời.
+- **Thêm thành viên**: `python backend/scripts/invite_user.py <email>` — tạo tài khoản **không đặt
+  mật khẩu**, gắn `user_metadata.password_set = false`. Người đó vào trang đăng nhập → "Chưa có
+  mật khẩu? Gửi mã qua email" → nhập mã → **buộc đặt mật khẩu** rồi mới vào được.
+- **Quên mật khẩu**: "Quên mật khẩu? Đặt lại bằng mã qua email" → nhập mã → đặt mật khẩu mới. Cùng
+  một luồng OTP, khác nhau ở `otpPurpose`: `reset` luôn dừng ở màn đặt mật khẩu, `login` chỉ dừng
+  khi `password_set` chưa true.
+- `user_metadata.password_set` là cờ quyết định có ép đặt mật khẩu hay không. **Cờ này chỉ gác
+  luồng OTP** — ai đã biết mật khẩu vẫn đăng nhập thẳng được, kể cả khi cờ chưa bật.
+- Đặt hộ mật khẩu (ít dùng): `python backend/scripts/set_password.py <email>` — cũng bật cờ, để
+  người đó không bị hỏi lại. Script từ chối nếu email chưa được mời.
 - Thông báo lỗi khi sai mật khẩu và khi email không tồn tại **giống hệt nhau** ("Email hoặc mật khẩu
   không đúng.") — Supabase trả cùng một `invalid_credentials` cho cả hai, đừng tách ra thành hai
   thông báo khác nhau vì như vậy là để lộ ai đang là thành viên.

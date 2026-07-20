@@ -77,7 +77,13 @@ def main() -> int:
     res = httpx.put(
         f"{base}/auth/v1/admin/users/{user['id']}",
         headers=headers,
-        json={"password": password},
+        json={
+            "password": password,
+            # Mark it set, or the login page would still corner them into
+            # choosing a password the next time they use an email code.
+            # Merged with whatever metadata they already carry.
+            "user_metadata": {**(user.get("user_metadata") or {}), "password_set": True},
+        },
         timeout=30,
     )
     if res.status_code != 200:
