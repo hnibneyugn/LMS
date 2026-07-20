@@ -187,15 +187,17 @@ def test_confirm_rejects_index_used_twice(repo):
     assert repo.lessons == []
 
 
-def test_confirm_rejects_non_adjacent_merge(repo):
+def test_confirm_allows_merge_across_a_dropped_chapter(repo):
+    """Non-adjacent indexes are valid: a user who drops the chapter in the
+    middle must still be able to merge the two chapters flanking the gap."""
     file_id = _ready_file(repo)
     res = client.post(
         f"/api/files/{file_id}/confirm",
         json={"chapters": [{"title": "a", "source_indexes": [0, 2]}]},
         headers=auth_headers(),
     )
-    assert res.status_code == 400
-    assert res.json()["detail"] == "Chỉ gộp được các chương liền kề."
+    assert res.status_code == 200
+    assert repo.lessons[0]["content_md"] == "Nội dung 0\n\nNội dung 2"
 
 
 def test_confirm_rejects_descending_merge(repo):
@@ -206,6 +208,7 @@ def test_confirm_rejects_descending_merge(repo):
         headers=auth_headers(),
     )
     assert res.status_code == 400
+    assert res.json()["detail"] == "Thứ tự chương trong một bài học phải tăng dần."
 
 
 @pytest.mark.parametrize(

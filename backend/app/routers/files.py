@@ -199,14 +199,18 @@ repo = _Repo()
 def _validate_source_indexes(
     chapters: list[ConfirmChapter], outline_length: int
 ) -> None:
-    """Raise 400 if the requested chapter layout is not expressible in the UI.
+    """Raise 400 if the requested chapter layout violates data integrity.
 
-    The rules mirror exactly what the review page can produce: merge only
-    joins adjacent chapters (checked here as "ascends with no gaps"), and a
-    draft chapter is either used once or dropped. Anything else means a
-    hand-crafted request, and accepting it would let a source chapter be
-    duplicated across two lessons, or a merge splice together a
-    non-adjacent range.
+    Two things are enforced: every index is in range and used by at most one
+    chapter (the `seen` set -- a source chapter cannot end up duplicated
+    across two lessons), and within a chapter the indexes are strictly
+    ascending (content is concatenated in index order in
+    `_build_lesson_rows`, so a reversed or unordered list would silently
+    scramble a lesson's text).
+
+    Indexes need NOT be contiguous within a chapter: a user who drops a
+    chapter in the middle of what should be one lesson must still be able to
+    merge the two chapters flanking the gap, so e.g. `[0, 2]` is valid.
 
     What this does NOT check is ordering *across* chapters -- e.g.
     `[{indexes:[2]}, {indexes:[0]}]` is accepted and produces lessons in
@@ -229,10 +233,10 @@ def _validate_source_indexes(
                     detail="Một chương gốc không thể nằm trong hai bài học.",
                 )
             seen.add(index)
-        if indexes != list(range(indexes[0], indexes[0] + len(indexes))):
+        if any(indexes[i] >= indexes[i + 1] for i in range(len(indexes) - 1)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Chỉ gộp được các chương liền kề.",
+                detail="Thứ tự chương trong một bài học phải tăng dần.",
             )
 
 

@@ -28,19 +28,6 @@ function toEditable(draft: DraftChapter[], indexes: number[], title: string): Ed
   }
 }
 
-/**
- * Merging is only legal when the two chapters' original draft indexes are
- * contiguous. Two chapters that are adjacent *in the current list* are not
- * necessarily adjacent in the original draft outline -- a chapter dropped
- * between them leaves a gap (e.g. previous=[0], current=[2] after index 1
- * was removed). Merging those would produce source_indexes=[0,2], which the
- * backend rejects with 400 because it is ascending but not contiguous.
- */
-function canMergeWithPrevious(previous: EditableChapter, current: EditableChapter): boolean {
-  const previousLast = previous.source_indexes[previous.source_indexes.length - 1]
-  return previousLast + 1 === current.source_indexes[0]
-}
-
 export function ReviewChapters() {
   const { fileId } = useParams<{ fileId: string }>()
   const navigate = useNavigate()
@@ -50,6 +37,9 @@ export function ReviewChapters() {
   const [draft, setDraft] = useState<DraftChapter[]>([])
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [removed, setRemoved] = useState<{ at: number; chapter: EditableChapter } | null>(null)
+  // Keyed by chapter identity (source_indexes[0], same value as the React
+  // `key` below), not list position -- a position-keyed set would point at
+  // the wrong row once a drop shifts later rows up.
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -79,7 +69,6 @@ export function ReviewChapters() {
     setChapters((prev) => {
       const previous = prev[position - 1]
       const current = prev[position]
-      if (!canMergeWithPrevious(previous, current)) return prev
       const merged = toEditable(
         draft,
         [...previous.source_indexes, ...current.source_indexes],
@@ -106,11 +95,11 @@ export function ReviewChapters() {
     setRemoved(null)
   }
 
-  function toggleExpanded(position: number) {
+  function toggleExpanded(chapterKey: number) {
     setExpanded((prev) => {
       const next = new Set(prev)
-      if (next.has(position)) next.delete(position)
-      else next.add(position)
+      if (next.has(chapterKey)) next.delete(chapterKey)
+      else next.add(chapterKey)
       return next
     })
   }
@@ -137,7 +126,7 @@ export function ReviewChapters() {
     !readOnly &&
     !submitting &&
     chapters.length > 0 &&
-    chapters.every((c) => c.title.trim().length > 0)
+    chapters.every((c) => c.title.trim().length > 0 && c.title.trim().length <= 200)
 
   return (
     <div className="mx-auto max-w-3xl p-8 pb-28">
@@ -153,12 +142,12 @@ export function ReviewChapters() {
 
       <ul className="mt-6 space-y-4">
         {chapters.map((chapter, position) => {
-          const mergeable = position > 0 && canMergeWithPrevious(chapters[position - 1], chapter)
           return (
             <li key={chapter.source_indexes[0]} className="rounded-lg border p-4">
               <Input
                 value={chapter.title}
                 disabled={readOnly}
+                maxLength={200}
                 onChange={(e) => renameChapter(position, e.target.value)}
               />
               <p className="mt-2 text-xs text-gray-500">
@@ -168,18 +157,20 @@ export function ReviewChapters() {
               </p>
               <button
                 type="button"
-                onClick={() => toggleExpanded(position)}
+                onClick={() => toggleExpanded(chapter.source_indexes[0])}
                 className="mt-2 w-full text-left text-sm text-gray-600"
               >
                 <span
-                  className={expanded.has(position) ? "whitespace-pre-wrap" : "line-clamp-3"}
+                  className={
+                    expanded.has(chapter.source_indexes[0]) ? "whitespace-pre-wrap" : "line-clamp-3"
+                  }
                 >
                   {chapter.preview}
                 </span>
               </button>
               {!readOnly && (
                 <div className="mt-3 flex gap-2">
-                  {mergeable && (
+                  {position > 0 && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -204,7 +195,9 @@ export function ReviewChapters() {
 
       {chapters.length === 0 && (
         <p className="py-8 text-center text-sm text-gray-500">
-          Đã bỏ hết chương. Hoàn tác hoặc tải lại trang để bắt đầu lại.
+          {draft.length > 0
+            ? "Đã bỏ hết chương. Hoàn tác hoặc tải lại trang để bắt đầu lại."
+            : "Chưa có chương nào để duyệt."}
         </p>
       )}
 
