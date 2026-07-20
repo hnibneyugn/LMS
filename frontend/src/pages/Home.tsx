@@ -34,6 +34,7 @@ export function Home() {
         Đăng nhập với: <b>{email}</b>
       </p>
       <div className="flex gap-2">
+        <Button onClick={() => navigate("/files")}>Tài liệu của tôi</Button>
         <Button onClick={pingApi}>Gọi /api/me</Button>
         <Button variant="outline" onClick={handleSignOut}>
           Đăng xuất
