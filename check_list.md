@@ -191,8 +191,6 @@ Từ review #1b (đã triage, không chặn gì):
 - [ ] `refresh()` trong `Files.tsx` không có cơ chế chặn các lần gọi chồng nhau, nên fetch chồng chéo
       có thể thoáng hiện dữ liệu cũ.
 - [ ] Ngưỡng 10 phút kẹt `processing` tính từ `uploaded_at` vì chưa có cột đánh dấu thời điểm bắt đầu xử lý.
-- [ ] Mở rộng preview chương chỉ lộ 300 ký tự đầu, không phải toàn bộ nội dung chương (spec §6.2 ngụ ý
-      phải là toàn văn).
 - [ ] Độ dài slug có thể vượt quá 80 ký tự đã tài liệu hoá một khi nối thêm `-{order_index}` và hậu tố
       `-N` (vô hại: cột DB là `text` không giới hạn).
 

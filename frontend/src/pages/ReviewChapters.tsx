@@ -11,20 +11,21 @@ import {
   type DraftChapter,
 } from "@/lib/files"
 
-/** A chapter as edited on this page: the payload shape plus a preview. */
+/** A chapter as edited on this page: the payload shape plus its full text. */
 interface EditableChapter extends ConfirmChapter {
-  preview: string
+  content: string
   charCount: number
 }
-
-const PREVIEW_CHARS = 300
 
 function toEditable(draft: DraftChapter[], indexes: number[], title: string): EditableChapter {
   const content = indexes.map((i) => draft[i].content_md).join("\n\n")
   return {
     title,
     source_indexes: indexes,
-    preview: content.slice(0, PREVIEW_CHARS),
+    // The whole chapter, not an excerpt: deciding what to merge or drop means
+    // reading the thing. `getFile` already shipped every chapter's content_md,
+    // so this costs no extra request -- collapsing is purely a CSS clamp.
+    content,
     charCount: content.length,
   }
 }
@@ -180,19 +181,32 @@ export function ReviewChapters() {
                 {chapter.source_indexes.length > 1 &&
                   ` · gộp từ ${chapter.source_indexes.length} chương`}
               </p>
-              <button
-                type="button"
-                onClick={() => toggleExpanded(chapter.source_indexes[0])}
-                className="mt-2 w-full text-left text-sm text-gray-600"
-              >
-                <span
-                  className={
-                    expanded.has(chapter.source_indexes[0]) ? "whitespace-pre-wrap" : "line-clamp-3"
-                  }
+              {expanded.has(chapter.source_indexes[0]) ? (
+                <>
+                  {/* Scrollable rather than inline: a chapter runs up to 8000
+                      characters, and letting that push the page would bury the
+                      merge/drop buttons the user came here to press. */}
+                  <div className="mt-2 max-h-96 overflow-y-auto rounded border bg-gray-50 p-3 text-sm whitespace-pre-wrap text-gray-700">
+                    {chapter.content}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(chapter.source_indexes[0])}
+                    className="mt-1 text-sm text-gray-600 underline"
+                  >
+                    Thu gọn
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(chapter.source_indexes[0])}
+                  className="mt-2 w-full text-left text-sm text-gray-600"
                 >
-                  {chapter.preview}
-                </span>
-              </button>
+                  <span className="line-clamp-3">{chapter.content}</span>
+                  <span className="mt-1 block underline">Xem toàn bộ nội dung</span>
+                </button>
+              )}
               {!readOnly && (
                 <div className="mt-3 flex gap-2">
                   {position > 0 && (
