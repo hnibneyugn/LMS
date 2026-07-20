@@ -86,9 +86,28 @@ Plan: `docs/superpowers/plans/2026-07-19-upload-review-ui.md`
 - [x] Trang duyệt chương: sửa tên / gộp / bỏ → `POST /api/files/{id}/confirm` → ghi `lessons`
 - [x] Nút "Xử lý lại" cho file `error`, và cho file kẹt `processing` quá 10 phút
 
-**Verify thật: CHƯA làm.** Mới có `pytest` (backend) và `npm run build` (frontend) sạch cộng review
-code toàn nhánh; chưa chạy luồng thật qua trình duyệt với R2 + Supabase thật (upload → duyệt chương
-→ `lessons`). Phải verify trước khi merge vào `main`.
+**Verify thật (qua HTTP thật, R2 thật, Supabase thật — `backend/scripts/verify_1b.py`):**
+- [x] **PUT presigned kiểu browser** (không tự set `Content-Length`, có `Content-Type` trình duyệt
+      suy ra) → **200**. Đây là rủi ro lớn nhất vì `ContentLength` được ký vào URL — nếu sai thì
+      mọi upload hỏng ở production mà không test nào bắt được
+- [x] `.docx` 6.1MB thật → `ready_for_review`, **9 chương**; heuristic #1b nhận đúng `CHƯƠNG 1..4`
+      và `4.2`/`5.1`/`5.2`/`5.3` trong đoạn `Normal` (trước heuristic, #1a chỉ ra 7 chương và
+      19k ký tự đầu là 3 cục "Mở đầu")
+- [x] `.pdf` 30 trang → 4 chương
+- [x] Confirm gộp `[0,1]` + bỏ chương 2 + đổi tên → `lessons` đúng số dòng, nội dung gộp đúng thứ
+      tự, chương đã bỏ vắng mặt, `order_index` liên tục từ 0
+- [x] **Gộp không liền kề `[0,2]`** (quy tắc vừa nới) → 200, nối đúng, chương 1 vắng mặt
+- [x] File hỏng → `error` + "Không mở được file .docx…"; gọi lại `/process` → **202** (retry được);
+      `/confirm` trên file `error` → 409
+- [x] `/confirm` và `/process` trên file `done` → 409 "File đã được duyệt."
+- [x] `GET /api/files` không còn lộ `storage_path`/`user_id`
+- [x] RLS thật: `lessons` có 7 dòng, anon key đọc ra **0**; `user_files` cũng 0
+- [x] `uploaded_at` trả về kèm offset `+00:00` → `new Date()` parse đúng, ngưỡng "kẹt 10 phút" an toàn
+- [x] Dọn sạch: 6 file + 10 lesson tạo lúc verify đã xoá khỏi DB và R2; giữ nguyên 2 mẫu của #1a
+
+**Còn lại — chỉ trình duyệt mới kiểm được (chưa làm):** trạng thái tự nhảy `pending → processing →
+`ready_for_review` không cần F5; poll dừng khi tab ẩn; thao tác gộp/bỏ/hoàn tác trên UI thật.
+Backend và hợp đồng API đã verify hết; phần còn lại là hành vi React.
 
 ### #3 — Lessons UI
 - [ ] `/lessons` (list + tab lọc Chủ đề + checkbox Đã học → `lesson_progress`)
