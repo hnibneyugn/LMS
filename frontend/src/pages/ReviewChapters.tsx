@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useCallback, useEffect, useState } from "react"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ApiError } from "@/lib/api"
 import {
   confirmChapters,
   errorMessage,
@@ -45,19 +46,27 @@ export function ReviewChapters() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Shared by the mount effect and the confirm-409 resync (Finding 3): both
+  // need to fetch the file and re-derive the same page state from it.
+  const loadFile = useCallback(async (id: string) => {
+    const file = await getFile(id)
+    const outline = file.draft_outline ?? []
+    setFileName(file.file_name)
+    setReadOnly(file.processing_status === "done")
+    setDraft(outline)
+    setChapters(outline.map((c, i) => toEditable(outline, [i], c.title)))
+    // The old edit-in-progress state no longer matches the freshly loaded
+    // chapters (indexes/identities may differ), so drop it rather than risk
+    // "Hoàn tác" inserting a stale chapter into the new list.
+    setRemoved(null)
+  }, [])
+
   useEffect(() => {
     if (!fileId) return
-    getFile(fileId)
-      .then((file) => {
-        const outline = file.draft_outline ?? []
-        setFileName(file.file_name)
-        setReadOnly(file.processing_status === "done")
-        setDraft(outline)
-        setChapters(outline.map((c, i) => toEditable(outline, [i], c.title)))
-      })
+    loadFile(fileId)
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false))
-  }, [fileId])
+  }, [fileId, loadFile])
 
   function renameChapter(position: number, title: string) {
     setChapters((prev) =>
@@ -117,6 +126,17 @@ export function ReviewChapters() {
     } catch (err) {
       setError(errorMessage(err))
       setSubmitting(false)
+      // Spec §7: a 409 means the file moved on without us (e.g. confirmed
+      // from another tab) -- resync instead of leaving a stale editable
+      // outline behind the error banner. Reuses the same load path as the
+      // mount effect so the derived state (readOnly included) matches
+      // whatever the backend actually holds now.
+      if (err instanceof ApiError && err.status === 409 && fileId) {
+        await loadFile(fileId).catch(() => {
+          // Resync itself failed -- keep the 409 detail on screen, that's
+          // still more useful than nothing.
+        })
+      }
     }
   }
 
@@ -130,7 +150,12 @@ export function ReviewChapters() {
 
   return (
     <div className="mx-auto max-w-3xl p-8 pb-28">
-      <h1 className="text-xl font-semibold">Duyệt chương</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Duyệt chương</h1>
+        <Link to="/files" className="text-sm text-gray-500 underline">
+          Tài liệu của tôi
+        </Link>
+      </div>
       <p className="mt-1 text-sm text-gray-500">{fileName}</p>
 
       {readOnly && (
@@ -210,7 +235,7 @@ export function ReviewChapters() {
         </div>
       )}
 
-      {!readOnly && (
+      {!readOnly && chapters.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 border-t bg-white p-4">
           <div className="mx-auto flex max-w-3xl items-center justify-between">
             <span className="text-sm text-gray-600">

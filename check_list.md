@@ -79,10 +79,16 @@ Plan: `docs/superpowers/plans/2026-07-19-upload-extract-chapters.md`
 > đúng, nhưng **pha duyệt chương ở #1b gánh rất nặng**. Cân nhắc heuristic nhận diện tiêu đề đánh
 > số (`Chương N`, `1.1`) trong đoạn `Normal`.
 
-### #1b — UI upload + duyệt chương
-- [ ] Trang upload (presign → PUT thẳng R2 → process → poll trạng thái)
-- [ ] Trang duyệt chương: sửa tên / gộp / bỏ → `POST /api/files/{id}/confirm` → ghi `lessons`
-- [ ] Nút "Xử lý lại" cho file `error`, và cho file kẹt `processing` quá 10 phút
+### #1b — UI upload + duyệt chương — ✅ XONG (2026-07-20, nhánh `feature/upload-review-ui`, chưa merge)
+Spec: `docs/superpowers/specs/2026-07-19-upload-review-ui-design.md`
+Plan: `docs/superpowers/plans/2026-07-19-upload-review-ui.md`
+- [x] Trang upload (presign → PUT thẳng R2 → process → poll trạng thái)
+- [x] Trang duyệt chương: sửa tên / gộp / bỏ → `POST /api/files/{id}/confirm` → ghi `lessons`
+- [x] Nút "Xử lý lại" cho file `error`, và cho file kẹt `processing` quá 10 phút
+
+**Verify thật: CHƯA làm.** Mới có `pytest` (backend) và `npm run build` (frontend) sạch cộng review
+code toàn nhánh; chưa chạy luồng thật qua trình duyệt với R2 + Supabase thật (upload → duyệt chương
+→ `lessons`). Phải verify trước khi merge vào `main`.
 
 ### #3 — Lessons UI
 - [ ] `/lessons` (list + tab lọc Chủ đề + checkbox Đã học → `lesson_progress`)
@@ -154,14 +160,22 @@ Từ review #1a (đã triage, không chặn gì):
       đang tồn tại 3 bản (Literal ở `files.py`, CHECK trong DB, biến này). Xoá hoặc derive Literal từ nó.
 - [ ] `md.py` parse `title`/`topic` trong frontmatter rồi vứt đi (spec §5.1 có yêu cầu) — file `.md`
       không heading sẽ lấy tên file làm tiêu đề chương thay vì title trong frontmatter.
-- [ ] `/process` gọi trên file `ready_for_review`/`done` sẽ ghi đè `draft_outline` không hỏi gì;
-      spec §4 chỉ định nghĩa retry cho trạng thái `error`. #1b chốt lại ngữ nghĩa này.
 - [ ] Deck chỉ có tiêu đề slide (không body) báo "không trích xuất được nội dung" — thông báo sai
       nguyên nhân, thực ra extractor có lấy được tiêu đề.
-- [ ] `GET /api/files*` trả `select("*")`, lộ `storage_path` + `user_id` cho client. Whitelist bằng
-      `response_model` khi #1b chốt payload.
 - [ ] `_FakeTable` bị lặp giữa `test_files_api.py` và `test_pipeline.py` — gom vào `conftest.py` khi
       có file thứ ba cần.
+
+Từ review #1b (đã triage, không chặn gì):
+- [ ] `apiFetch` trả `Promise<any>`, nên mọi wrapper có kiểu trong `frontend/src/lib/files.ts` chỉ là
+      ép kiểu không được kiểm chứng — backend đổi field sẽ compile qua mà không báo lỗi.
+- [ ] PUT lên R2 lỗi sẽ để lại một dòng `pending` mồ côi; chưa có endpoint xoá.
+- [ ] `refresh()` trong `Files.tsx` không có cơ chế chặn các lần gọi chồng nhau, nên fetch chồng chéo
+      có thể thoáng hiện dữ liệu cũ.
+- [ ] Ngưỡng 10 phút kẹt `processing` tính từ `uploaded_at` vì chưa có cột đánh dấu thời điểm bắt đầu xử lý.
+- [ ] Mở rộng preview chương chỉ lộ 300 ký tự đầu, không phải toàn bộ nội dung chương (spec §6.2 ngụ ý
+      phải là toàn văn).
+- [ ] Độ dài slug có thể vượt quá 80 ký tự đã tài liệu hoá một khi nối thêm `-{order_index}` và hậu tố
+      `-N` (vô hại: cột DB là `text` không giới hạn).
 
 ## Việc cần user (blocker)
 

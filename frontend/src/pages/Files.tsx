@@ -13,10 +13,17 @@ export function Files() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const timerRef = useRef<number | null>(null)
 
-  const refresh = useCallback(async () => {
+  // `clearError` defaults to true: a plain refresh (poll tick, initial load,
+  // after upload) should drop any stale error once the list loads fine again.
+  // `handleProcess` passes false so the message it just set (e.g. the R2
+  // 503) survives the refetch it triggers in its own `finally` -- otherwise
+  // this refetch succeeding would erase the error a tick after the user saw
+  // it, and the row looks unchanged since the backend deliberately leaves it
+  // `pending` on failure. Looks redundant unless you know that bug exists.
+  const refresh = useCallback(async (clearError = true) => {
     try {
       setFiles(await listFiles())
-      setError(null)
+      if (clearError) setError(null)
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -78,8 +85,13 @@ export function Files() {
     } finally {
       setBusyId(null)
       // Refetch either way: on success to pick up `processing`, on failure to
-      // resync with whatever state the backend actually holds.
-      await refresh()
+      // resync with whatever state the backend actually holds. Pass
+      // clearError=false so a message the catch block just set (e.g. the R2
+      // 503 detail) isn't wiped out a tick later by this same refetch
+      // succeeding -- the row is deliberately left `pending` on failure, so
+      // without this the banner would flash and disappear with nothing in
+      // the UI to show the user what happened.
+      await refresh(false)
     }
   }
 
