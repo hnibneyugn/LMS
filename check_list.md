@@ -79,7 +79,7 @@ Plan: `docs/superpowers/plans/2026-07-19-upload-extract-chapters.md`
 > đúng, nhưng **pha duyệt chương ở #1b gánh rất nặng**. Cân nhắc heuristic nhận diện tiêu đề đánh
 > số (`Chương N`, `1.1`) trong đoạn `Normal`.
 
-### #1b — UI upload + duyệt chương — ✅ XONG (2026-07-20, nhánh `feature/upload-review-ui`, chưa merge)
+### #1b — UI upload + duyệt chương — ✅ XONG (2026-07-20, merge `0240aff`)
 Spec: `docs/superpowers/specs/2026-07-19-upload-review-ui-design.md`
 Plan: `docs/superpowers/plans/2026-07-19-upload-review-ui.md`
 - [x] Trang upload (presign → PUT thẳng R2 → process → poll trạng thái)
