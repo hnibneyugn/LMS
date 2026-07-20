@@ -79,10 +79,35 @@ Plan: `docs/superpowers/plans/2026-07-19-upload-extract-chapters.md`
 > đúng, nhưng **pha duyệt chương ở #1b gánh rất nặng**. Cân nhắc heuristic nhận diện tiêu đề đánh
 > số (`Chương N`, `1.1`) trong đoạn `Normal`.
 
-### #1b — UI upload + duyệt chương
-- [ ] Trang upload (presign → PUT thẳng R2 → process → poll trạng thái)
-- [ ] Trang duyệt chương: sửa tên / gộp / bỏ → `POST /api/files/{id}/confirm` → ghi `lessons`
-- [ ] Nút "Xử lý lại" cho file `error`, và cho file kẹt `processing` quá 10 phút
+### #1b — UI upload + duyệt chương — ✅ XONG (2026-07-20, nhánh `feature/upload-review-ui`, chưa merge)
+Spec: `docs/superpowers/specs/2026-07-19-upload-review-ui-design.md`
+Plan: `docs/superpowers/plans/2026-07-19-upload-review-ui.md`
+- [x] Trang upload (presign → PUT thẳng R2 → process → poll trạng thái)
+- [x] Trang duyệt chương: sửa tên / gộp / bỏ → `POST /api/files/{id}/confirm` → ghi `lessons`
+- [x] Nút "Xử lý lại" cho file `error`, và cho file kẹt `processing` quá 10 phút
+
+**Verify thật (qua HTTP thật, R2 thật, Supabase thật — `backend/scripts/verify_1b.py`):**
+- [x] **PUT presigned kiểu browser** (không tự set `Content-Length`, có `Content-Type` trình duyệt
+      suy ra) → **200**. Đây là rủi ro lớn nhất vì `ContentLength` được ký vào URL — nếu sai thì
+      mọi upload hỏng ở production mà không test nào bắt được
+- [x] `.docx` 6.1MB thật → `ready_for_review`, **9 chương**; heuristic #1b nhận đúng `CHƯƠNG 1..4`
+      và `4.2`/`5.1`/`5.2`/`5.3` trong đoạn `Normal` (trước heuristic, #1a chỉ ra 7 chương và
+      19k ký tự đầu là 3 cục "Mở đầu")
+- [x] `.pdf` 30 trang → 4 chương
+- [x] Confirm gộp `[0,1]` + bỏ chương 2 + đổi tên → `lessons` đúng số dòng, nội dung gộp đúng thứ
+      tự, chương đã bỏ vắng mặt, `order_index` liên tục từ 0
+- [x] **Gộp không liền kề `[0,2]`** (quy tắc vừa nới) → 200, nối đúng, chương 1 vắng mặt
+- [x] File hỏng → `error` + "Không mở được file .docx…"; gọi lại `/process` → **202** (retry được);
+      `/confirm` trên file `error` → 409
+- [x] `/confirm` và `/process` trên file `done` → 409 "File đã được duyệt."
+- [x] `GET /api/files` không còn lộ `storage_path`/`user_id`
+- [x] RLS thật: `lessons` có 7 dòng, anon key đọc ra **0**; `user_files` cũng 0
+- [x] `uploaded_at` trả về kèm offset `+00:00` → `new Date()` parse đúng, ngưỡng "kẹt 10 phút" an toàn
+- [x] Dọn sạch: 6 file + 10 lesson tạo lúc verify đã xoá khỏi DB và R2; giữ nguyên 2 mẫu của #1a
+
+**Còn lại — chỉ trình duyệt mới kiểm được (chưa làm):** trạng thái tự nhảy `pending → processing →
+`ready_for_review` không cần F5; poll dừng khi tab ẩn; thao tác gộp/bỏ/hoàn tác trên UI thật.
+Backend và hợp đồng API đã verify hết; phần còn lại là hành vi React.
 
 ### #3 — Lessons UI
 - [ ] `/lessons` (list + tab lọc Chủ đề + checkbox Đã học → `lesson_progress`)
@@ -154,14 +179,20 @@ Từ review #1a (đã triage, không chặn gì):
       đang tồn tại 3 bản (Literal ở `files.py`, CHECK trong DB, biến này). Xoá hoặc derive Literal từ nó.
 - [ ] `md.py` parse `title`/`topic` trong frontmatter rồi vứt đi (spec §5.1 có yêu cầu) — file `.md`
       không heading sẽ lấy tên file làm tiêu đề chương thay vì title trong frontmatter.
-- [ ] `/process` gọi trên file `ready_for_review`/`done` sẽ ghi đè `draft_outline` không hỏi gì;
-      spec §4 chỉ định nghĩa retry cho trạng thái `error`. #1b chốt lại ngữ nghĩa này.
 - [ ] Deck chỉ có tiêu đề slide (không body) báo "không trích xuất được nội dung" — thông báo sai
       nguyên nhân, thực ra extractor có lấy được tiêu đề.
-- [ ] `GET /api/files*` trả `select("*")`, lộ `storage_path` + `user_id` cho client. Whitelist bằng
-      `response_model` khi #1b chốt payload.
 - [ ] `_FakeTable` bị lặp giữa `test_files_api.py` và `test_pipeline.py` — gom vào `conftest.py` khi
       có file thứ ba cần.
+
+Từ review #1b (đã triage, không chặn gì):
+- [ ] `apiFetch` trả `Promise<any>`, nên mọi wrapper có kiểu trong `frontend/src/lib/files.ts` chỉ là
+      ép kiểu không được kiểm chứng — backend đổi field sẽ compile qua mà không báo lỗi.
+- [ ] PUT lên R2 lỗi sẽ để lại một dòng `pending` mồ côi; chưa có endpoint xoá.
+- [ ] `refresh()` trong `Files.tsx` không có cơ chế chặn các lần gọi chồng nhau, nên fetch chồng chéo
+      có thể thoáng hiện dữ liệu cũ.
+- [ ] Ngưỡng 10 phút kẹt `processing` tính từ `uploaded_at` vì chưa có cột đánh dấu thời điểm bắt đầu xử lý.
+- [ ] Độ dài slug có thể vượt quá 80 ký tự đã tài liệu hoá một khi nối thêm `-{order_index}` và hậu tố
+      `-N` (vô hại: cột DB là `text` không giới hạn).
 
 ## Việc cần user (blocker)
 

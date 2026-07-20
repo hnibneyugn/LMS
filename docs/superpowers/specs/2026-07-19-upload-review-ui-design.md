@@ -59,8 +59,9 @@ resp: { lesson_count: int }
 - `title` sau khi trim dài 1–200 ký tự
 - mỗi `source_indexes` không rỗng, mọi phần tử là index hợp lệ trong `draft_outline`
 - không index nào xuất hiện ở hai chương khác nhau (bỏ được, trùng thì không)
-- trong một chương, các index phải **liền kề và tăng dần** — gộp chỉ áp cho chương kề nhau,
-  đúng như UI cho phép
+- trong một chương, các index phải **tăng dần** (không cần liền kề) và không index nào bị
+  lặp lại — không liền kề cũng được vì nếu bắt liền kề thì user bỏ một chương ở giữa sẽ không
+  thể gộp lại hai chương hai bên khoảng trống đó
 
 **Kiểm tra trạng thái:**
 
@@ -228,7 +229,7 @@ Mọi lỗi hiện bằng tiếng Việt và **ưu tiên `detail` của backend*
 - đường hạnh phúc: ghi đúng N `lessons`, `order_index` 0..N-1, `content_md` nối đúng thứ tự
 - gộp nhiều chương → một `lessons` có nội dung của cả hai, ngăn bằng `\n\n`
 - bỏ chương → chương đó không có trong `lessons`
-- 400: index lạ · index trùng ở hai chương · index không liền kề · `chapters` rỗng · title rỗng · title >200
+- 400: index lạ · index trùng ở hai chương · index giảm dần trong một chương · `chapters` rỗng · title rỗng · title >200
 - 409: `pending` · `processing` · `error` · `done`
 - 404: file của user khác
 - insert `lessons` lỗi → file vẫn `ready_for_review`, không sót `lessons`

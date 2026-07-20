@@ -1,91 +1,12 @@
 import pytest
 
 from app.ingest import pipeline
-
-
-class _FakeTable:
-    """Mimics the slice of supabase-py's fluent query builder pipeline.py uses.
-
-    Real supabase-py chains as `table(name).select(...).eq(...).maybe_single()
-    .execute()` and `table(name).update(...).eq(...).execute()`. `.eq()` can be
-    chained more than once (pipeline.py filters updates on both `id` and
-    `user_id`), so filters accumulate and `execute()` applies them against the
-    store. Two behaviours matter here because pipeline.py depends on them:
-
-    - `.maybe_single().execute()` returns `None` itself (not an object whose
-      `.data` is `None`) when nothing matches -- see postgrest's
-      `SyncMaybeSingleRequestBuilder.execute`.
-    - `.update(...).execute()` returns a response whose `.data` is a *list* of
-      the updated rows (representation), even though only one row matches here.
-    """
-
-    def __init__(self, store, write_log=None):
-        self._store = store
-        # Records every attempted write (a call to .update(...).execute()),
-        # regardless of whether it actually matched a row. Tests use this to
-        # tell "no write was attempted" apart from "a write was attempted but
-        # happened to match nothing" -- those are very different outcomes for
-        # process_file's error handling even though the store ends up
-        # unchanged in both cases.
-        self._write_log = write_log if write_log is not None else []
-        self._filters: dict[str, object] = {}
-        self._update_values: dict | None = None
-        self._maybe_single = False
-
-    def select(self, *_columns):
-        return self
-
-    def update(self, values):
-        self._update_values = values
-        return self
-
-    def eq(self, column, value):
-        self._filters[column] = value
-        return self
-
-    def maybe_single(self):
-        self._maybe_single = True
-        return self
-
-    def _matches(self):
-        return [
-            row
-            for row in self._store.values()
-            if all(row.get(k) == v for k, v in self._filters.items())
-        ]
-
-    def execute(self):
-        matches = self._matches()
-        if self._update_values is not None:
-            self._write_log.append(
-                {
-                    "filters": dict(self._filters),
-                    "values": dict(self._update_values),
-                    "matched_ids": [row.get("id") for row in matches],
-                }
-            )
-            for row in matches:
-                row.update(self._update_values)
-            return type("Res", (), {"data": [dict(row) for row in matches]})()
-        if self._maybe_single:
-            if not matches:
-                return None
-            return type("Res", (), {"data": dict(matches[0])})()
-        return type("Res", (), {"data": [dict(row) for row in matches]})()
-
-
-class _FakeClient:
-    def __init__(self, store, write_log=None):
-        self._store = store
-        self._write_log = write_log if write_log is not None else []
-
-    def table(self, _name):
-        return _FakeTable(self._store, self._write_log)
+from tests.conftest import FakeClient
 
 
 class _Row(dict):
     """A store row that also exposes the write-attempt log recorded by
-    _FakeTable, so tests can assert on attempted writes without disturbing
+    FakeTable, so tests can assert on attempted writes without disturbing
     the plain `fake_db["field"]` access the rest of the suite relies on.
     """
 
@@ -107,7 +28,7 @@ def fake_db(monkeypatch):
     store = {"f1": row}
     write_log: list[dict] = []
     row.write_log = write_log
-    client = _FakeClient(store, write_log)
+    client = FakeClient(store, write_log)
     monkeypatch.setattr(pipeline.db, "admin", lambda: client)
     return row
 
@@ -220,7 +141,7 @@ def test_update_does_not_leak_into_another_users_row(monkeypatch):
     }
     store = {"row_u1": row_u1, "row_u2": row_u2}
     write_log: list[dict] = []
-    client = _FakeClient(store, write_log)
+    client = FakeClient(store, write_log)
     monkeypatch.setattr(pipeline.db, "admin", lambda: client)
     monkeypatch.setattr(
         pipeline.r2, "download", lambda key: b"# A\nnoi dung a\n\n# B\nnoi dung b\n"

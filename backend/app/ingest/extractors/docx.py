@@ -6,6 +6,7 @@ import re
 from docx import Document
 
 from app.ingest.extractors._escaping import escape_accidental_headings
+from app.ingest.extractors._numbering import numbered_heading_level
 from app.ingest.extractors.errors import ExtractError
 
 _STYLE_ID_HEADING = re.compile(r"^heading(\d+)$")
@@ -28,10 +29,16 @@ def extract(data: bytes) -> str:
         text = paragraph.text.strip()
         if not text:
             continue
+        style_name = (paragraph.style.name or "").lower()
+        is_list = "list" in style_name
         level = _heading_level(paragraph.style)
+        if level is None and not is_list:
+            # No real heading style: fall back to numbering, which is how
+            # most Vietnamese Word documents express structure.
+            level = numbered_heading_level(text)
         if level is not None:
             parts.append(f"{'#' * level} {text}")
-        elif "list" in (paragraph.style.name or "").lower():
+        elif is_list:
             parts.append(f"- {escape_accidental_headings(text)}")
         else:
             parts.append(escape_accidental_headings(text))

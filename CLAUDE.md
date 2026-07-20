@@ -94,8 +94,33 @@ docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
 
 ## Auth (đã chạy thật)
 
-- Đăng nhập Magic Link, **invite-only** cưỡng chế bằng `signInWithOtp({ shouldCreateUser: false })`
-  — email không có sẵn trong `auth.users` bị từ chối, không tạo user mới.
+- Hai cách đăng nhập, cùng một tài khoản:
+  - **Mật khẩu** (`signInWithPassword`) — đường chính, vào thẳng không cần mở mail.
+  - **Magic Link / mã OTP** (`signInWithOtp` → `verifyOtp`) — đường lui khi quên mật khẩu, và là
+    lối vào duy nhất cho thành viên chưa được đặt mật khẩu. Mail mang **cả link và mã 8 số**;
+    nhập mã sẽ đăng nhập **chính thiết bị đang gõ**, nên mở mail trên điện thoại vẫn vào được ở
+    máy tính. Bấm link chỉ tạo phiên trên đúng thiết bị bấm — không thể "reload" máy còn lại để
+    nhận phiên hộ.
+- **Email template trong Supabase phải chứa `{{ .Token }}`**, nếu không mail chỉ có link và ô nhập
+  mã trở nên vô dụng. Dashboard → Authentication → Email Templates → Magic Link.
+- **Invite-only** cưỡng chế bằng `shouldCreateUser: false` ở luồng OTP; luồng mật khẩu **không bao
+  giờ gọi `signUp`**, nên cũng không tạo được user mới. Thêm thành viên = mời qua Supabase.
+- **Thêm thành viên**: `python backend/scripts/invite_user.py <email>` — tạo tài khoản **không đặt
+  mật khẩu**, gắn `user_metadata.password_set = false`. Người đó vào trang đăng nhập → "Chưa có
+  mật khẩu? Gửi mã qua email" → nhập mã → **buộc đặt mật khẩu** rồi mới vào được.
+- **Quên mật khẩu**: "Quên mật khẩu? Đặt lại bằng mã qua email" → nhập mã → đặt mật khẩu mới. Cùng
+  một luồng OTP, khác nhau ở `otpPurpose`: `reset` luôn dừng ở màn đặt mật khẩu, `login` chỉ dừng
+  khi `password_set` chưa true.
+- **Đổi mật khẩu khi đã đăng nhập**: trang `/account`. Bắt nhập **mật khẩu hiện tại** rồi mới đổi —
+  Supabase không yêu cầu, nhưng một phiên bỏ quên trên máy dùng chung không được phép đủ để chiếm
+  tài khoản. Ai chưa có mật khẩu (`password_set` chưa true) thì không bị hỏi mật khẩu cũ vì không có.
+- `user_metadata.password_set` là cờ quyết định có ép đặt mật khẩu hay không. **Cờ này chỉ gác
+  luồng OTP** — ai đã biết mật khẩu vẫn đăng nhập thẳng được, kể cả khi cờ chưa bật.
+- Đặt hộ mật khẩu (ít dùng): `python backend/scripts/set_password.py <email>` — cũng bật cờ, để
+  người đó không bị hỏi lại. Script từ chối nếu email chưa được mời.
+- Thông báo lỗi khi sai mật khẩu và khi email không tồn tại **giống hệt nhau** ("Email hoặc mật khẩu
+  không đúng.") — Supabase trả cùng một `invalid_credentials` cho cả hai, đừng tách ra thành hai
+  thông báo khác nhau vì như vậy là để lộ ai đang là thành viên.
 - Bảo vệ route ở frontend bằng component `ProtectedRoute` (SPA không có middleware SSR).
 - Backend verify JWT qua **JWKS / ES256** (project này ký bất đối xứng), lấy từ
   `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`. **Không cần shared JWT secret.**

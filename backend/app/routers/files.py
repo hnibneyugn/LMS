@@ -5,12 +5,13 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app import db
 from app.config import settings
 from app.dependencies.auth import CurrentUser, get_current_user
 from app.ingest import pipeline
+from app.lessons.slug import slugify, unique_slug
 from app.storage import r2
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,64 @@ class PresignResponse(BaseModel):
     file_id: str
     upload_url: str
     storage_path: str
+
+
+class ConfirmChapter(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    source_indexes: list[int] = Field(min_length=1)
+
+    @field_validator("title")
+    @classmethod
+    def _trim_title(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Tiêu đề chương không được để trống.")
+        return trimmed
+
+
+class ConfirmRequest(BaseModel):
+    chapters: list[ConfirmChapter] = Field(min_length=1)
+
+
+class ConfirmResponse(BaseModel):
+    lesson_count: int
+
+
+class DraftChapterOut(BaseModel):
+    title: str
+    content_md: str
+    order_index: int
+
+
+class FileOut(BaseModel):
+    """Everything the file list needs -- and nothing else.
+
+    `storage_path` and `user_id` are deliberately absent: the client never
+    addresses R2 directly (it only ever uses a presigned URL) and never needs
+    to name a user, so shipping either would be leaking internals for free.
+    """
+
+    id: str
+    file_name: str
+    file_type: str
+    file_size: int | None = None
+    processing_status: str
+    error_message: str | None = None
+    uploaded_at: str | None = None
+    chapter_count: int | None = None
+
+
+class FileDetailOut(FileOut):
+    draft_outline: list[DraftChapterOut] | None = None
+
+
+# Every status other than ready_for_review is a 409 with its own explanation.
+_CONFIRM_BLOCKED = {
+    "pending": "File chưa xử lý xong.",
+    "processing": "File chưa xử lý xong.",
+    "error": "File xử lý lỗi — hãy xử lý lại trước khi duyệt.",
+    "done": "File đã được duyệt.",
+}
 
 
 class _Repo:
@@ -118,8 +177,103 @@ class _Repo:
         )
         return result.data or []
 
+    def insert_lessons(self, rows: list[dict]) -> None:
+        """Insert every lesson of a confirmed file in one call.
+
+        One batched insert rather than a loop: supabase-py has no transaction
+        handle here, so a loop that fails halfway would leave a partially
+        confirmed file behind. A single insert either lands whole or not at all.
+        """
+        db.admin().table("lessons").insert(rows).execute()
+
+    def list_lesson_slugs(self, user_id: str) -> list[str]:
+        result = (
+            db.admin().table("lessons").select("slug").eq("user_id", user_id).execute()
+        )
+        return [row["slug"] for row in (result.data or [])]
+
 
 repo = _Repo()
+
+
+def _validate_source_indexes(
+    chapters: list[ConfirmChapter], outline_length: int
+) -> None:
+    """Raise 400 if the requested chapter layout violates data integrity.
+
+    Two things are enforced: every index is in range and used by at most one
+    chapter (the `seen` set -- a source chapter cannot end up duplicated
+    across two lessons), and within a chapter the indexes are strictly
+    ascending (content is concatenated in index order in
+    `_build_lesson_rows`, so a reversed or unordered list would silently
+    scramble a lesson's text).
+
+    Indexes need NOT be contiguous within a chapter: a user who drops a
+    chapter in the middle of what should be one lesson must still be able to
+    merge the two chapters flanking the gap, so e.g. `[0, 2]` is valid.
+
+    What this does NOT check is ordering *across* chapters -- e.g.
+    `[{indexes:[2]}, {indexes:[0]}]` is accepted and produces lessons in
+    that order. `order_index` follows the request array by design, so which
+    lesson comes first is deliberately the client's choice, not something
+    this function polices.
+    """
+    seen: set[int] = set()
+    for chapter in chapters:
+        indexes = chapter.source_indexes
+        for index in indexes:
+            if not 0 <= index < outline_length:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Danh sách chương không hợp lệ.",
+                )
+            if index in seen:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Một chương gốc không thể nằm trong hai bài học.",
+                )
+            seen.add(index)
+        if any(indexes[i] >= indexes[i + 1] for i in range(len(indexes) - 1)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Thứ tự chương trong một bài học phải tăng dần.",
+            )
+
+
+def _build_lesson_rows(
+    chapters: list[ConfirmChapter],
+    outline: list[dict],
+    file_name: str,
+    file_id: str,
+    user_id: str,
+    taken_slugs: set[str],
+) -> list[dict]:
+    base = slugify(file_name.rsplit(".", 1)[0])
+    used = set(taken_slugs)
+    rows: list[dict] = []
+    for order, chapter in enumerate(chapters):
+        candidate = f"{base}-{order}" if base else f"bai-{order}"
+        slug = unique_slug(candidate, used)
+        used.add(slug)
+        rows.append(
+            {
+                "user_id": user_id,
+                "source_file_id": file_id,
+                "title": chapter.title,
+                "slug": slug,
+                "content_md": "\n\n".join(
+                    outline[index]["content_md"] for index in chapter.source_indexes
+                ),
+                "order_index": order,
+            }
+        )
+    return rows
+
+
+def _to_file_out(row: dict) -> dict:
+    """Row -> FileOut-shaped dict, deriving chapter_count from the outline."""
+    outline = row.get("draft_outline")
+    return {**row, "chapter_count": len(outline) if outline is not None else None}
 
 
 @router.post("/presign", response_model=PresignResponse)
@@ -174,6 +328,13 @@ def process(
             status_code=status.HTTP_409_CONFLICT, detail="File đang được xử lý."
         )
 
+    if row["processing_status"] == "done":
+        # Reprocessing would overwrite draft_outline while `lessons` already
+        # point at this file. Confirmed is final -- see spec #1b decision B3.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="File đã được duyệt."
+        )
+
     try:
         exists = r2.object_exists(row["storage_path"])
     except Exception:
@@ -207,16 +368,62 @@ def process(
     return {"status": "processing"}
 
 
-@router.get("/{file_id}")
+@router.get("/{file_id}", response_model=FileDetailOut)
 def get_file(file_id: str, user: CurrentUser = Depends(get_current_user)):
     row = repo.get_file(file_id, user.user_id)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy file."
         )
-    return row
+    return _to_file_out(row)
 
 
-@router.get("")
+@router.get("", response_model=list[FileOut])
 def list_files(user: CurrentUser = Depends(get_current_user)):
-    return repo.list_files(user.user_id)
+    return [_to_file_out(row) for row in repo.list_files(user.user_id)]
+
+
+@router.post("/{file_id}/confirm", response_model=ConfirmResponse)
+def confirm(
+    file_id: str,
+    body: ConfirmRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    row = repo.get_file(file_id, user.user_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy file."
+        )
+
+    current_status = row["processing_status"]
+    if current_status != "ready_for_review":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_CONFIRM_BLOCKED.get(current_status, "File chưa xử lý xong."),
+        )
+
+    outline = row.get("draft_outline") or []
+    if not outline:
+        # ready_for_review with nothing to review means the row is
+        # inconsistent -- refuse rather than write zero lessons and mark done.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="File chưa xử lý xong."
+        )
+
+    _validate_source_indexes(body.chapters, len(outline))
+
+    rows = _build_lesson_rows(
+        body.chapters,
+        outline,
+        row["file_name"],
+        file_id,
+        user.user_id,
+        set(repo.list_lesson_slugs(user.user_id)),
+    )
+
+    # Insert first, mark done second. A failure here leaves the file at
+    # ready_for_review so the user can simply confirm again -- the reverse
+    # order would strand a `done` file with no lessons.
+    repo.insert_lessons(rows)
+    repo.set_status(file_id, user.user_id, "done")
+    return ConfirmResponse(lesson_count=len(rows))

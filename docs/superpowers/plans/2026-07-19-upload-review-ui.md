@@ -717,12 +717,18 @@ Thêm vào `backend/app/routers/files.py`, trước định nghĩa `router` các
 def _validate_source_indexes(
     chapters: list[ConfirmChapter], outline_length: int
 ) -> None:
-    """Raise 400 if the requested chapter layout is not expressible in the UI.
+    """Raise 400 if the requested chapter layout violates data integrity.
 
-    The rules mirror exactly what the review page can produce: merge only
-    joins adjacent chapters, and a draft chapter is either used once or
-    dropped. Anything else means a hand-crafted request, and accepting it
-    would let content be duplicated or reordered in ways the user never saw.
+    Two things are enforced: every index is in range and used by at most one
+    chapter (the `seen` set -- a source chapter cannot end up duplicated
+    across two lessons), and within a chapter the indexes are strictly
+    ascending (content is concatenated in index order in
+    `_build_lesson_rows`, so a reversed or unordered list would silently
+    scramble a lesson's text).
+
+    Indexes need NOT be contiguous within a chapter: a user who drops a
+    chapter in the middle of what should be one lesson must still be able to
+    merge the two chapters flanking the gap, so e.g. `[0, 2]` is valid.
     """
     seen: set[int] = set()
     for chapter in chapters:
@@ -739,10 +745,10 @@ def _validate_source_indexes(
                     detail="Một chương gốc không thể nằm trong hai bài học.",
                 )
             seen.add(index)
-        if indexes != list(range(indexes[0], indexes[0] + len(indexes))):
+        if any(indexes[i] >= indexes[i + 1] for i in range(len(indexes) - 1)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Chỉ gộp được các chương liền kề.",
+                detail="Thứ tự chương trong một bài học phải tăng dần.",
             )
 
 
@@ -895,15 +901,17 @@ def test_confirm_rejects_index_used_twice(repo):
     assert repo.lessons == []
 
 
-def test_confirm_rejects_non_adjacent_merge(repo):
+def test_confirm_allows_merge_across_a_dropped_chapter(repo):
+    """Non-adjacent indexes are valid: a user who drops the chapter in the
+    middle must still be able to merge the two chapters flanking the gap."""
     file_id = _ready_file(repo)
     res = client.post(
         f"/api/files/{file_id}/confirm",
         json={"chapters": [{"title": "a", "source_indexes": [0, 2]}]},
         headers=_headers(),
     )
-    assert res.status_code == 400
-    assert res.json()["detail"] == "Chỉ gộp được các chương liền kề."
+    assert res.status_code == 200
+    assert repo.lessons[0]["content_md"] == "Nội dung 0\n\nNội dung 2"
 
 
 def test_confirm_rejects_descending_merge(repo):
@@ -914,6 +922,7 @@ def test_confirm_rejects_descending_merge(repo):
         headers=_headers(),
     )
     assert res.status_code == 400
+    assert res.json()["detail"] == "Thứ tự chương trong một bài học phải tăng dần."
 
 
 @pytest.mark.parametrize(
