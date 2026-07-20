@@ -96,8 +96,13 @@ docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
 
 - Hai cách đăng nhập, cùng một tài khoản:
   - **Mật khẩu** (`signInWithPassword`) — đường chính, vào thẳng không cần mở mail.
-  - **Magic Link** (`signInWithOtp`) — đường lui khi quên mật khẩu, và là lối vào duy nhất cho
-    thành viên chưa được đặt mật khẩu.
+  - **Magic Link / mã OTP** (`signInWithOtp` → `verifyOtp`) — đường lui khi quên mật khẩu, và là
+    lối vào duy nhất cho thành viên chưa được đặt mật khẩu. Mail mang **cả link và mã 8 số**;
+    nhập mã sẽ đăng nhập **chính thiết bị đang gõ**, nên mở mail trên điện thoại vẫn vào được ở
+    máy tính. Bấm link chỉ tạo phiên trên đúng thiết bị bấm — không thể "reload" máy còn lại để
+    nhận phiên hộ.
+- **Email template trong Supabase phải chứa `{{ .Token }}`**, nếu không mail chỉ có link và ô nhập
+  mã trở nên vô dụng. Dashboard → Authentication → Email Templates → Magic Link.
 - **Invite-only** cưỡng chế bằng `shouldCreateUser: false` ở luồng OTP; luồng mật khẩu **không bao
   giờ gọi `signUp`**, nên cũng không tạo được user mới. Thêm thành viên = mời qua Supabase.
 - Đặt mật khẩu cho thành viên đã mời: `python backend/scripts/set_password.py <email>` (dùng
