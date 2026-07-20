@@ -111,6 +111,9 @@ docker-compose.yml          # local dev (tuỳ chọn — xem "Chạy local")
 - **Quên mật khẩu**: "Quên mật khẩu? Đặt lại bằng mã qua email" → nhập mã → đặt mật khẩu mới. Cùng
   một luồng OTP, khác nhau ở `otpPurpose`: `reset` luôn dừng ở màn đặt mật khẩu, `login` chỉ dừng
   khi `password_set` chưa true.
+- **Đổi mật khẩu khi đã đăng nhập**: trang `/account`. Bắt nhập **mật khẩu hiện tại** rồi mới đổi —
+  Supabase không yêu cầu, nhưng một phiên bỏ quên trên máy dùng chung không được phép đủ để chiếm
+  tài khoản. Ai chưa có mật khẩu (`password_set` chưa true) thì không bị hỏi mật khẩu cũ vì không có.
 - `user_metadata.password_set` là cờ quyết định có ép đặt mật khẩu hay không. **Cờ này chỉ gác
   luồng OTP** — ai đã biết mật khẩu vẫn đăng nhập thẳng được, kể cả khi cờ chưa bật.
 - Đặt hộ mật khẩu (ít dùng): `python backend/scripts/set_password.py <email>` — cũng bật cờ, để
