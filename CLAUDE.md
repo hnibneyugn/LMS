@@ -41,9 +41,13 @@ nội dung bài, chấm điểm + phản biện (Socratic). Cả nhóm chung m�
 | Ingest | User upload file → R2 (presigned) → extract → cắt chương → `lessons` |
 | Hosting | Frontend: Vercel (static build) · Backend: Koyeb (Docker) |
 
-> **Model chat = `gemini-3.5-flash`** (chốt 2026-07-21; đổi từ `gemini-2.5-flash` cùng ngày — bản
-> 2.5 trả 404 "no longer available to new users" với API key mới, xác nhận qua verify #4a thật).
-> Embedding model vẫn hoãn cùng RAG (D8).
+> **Model chat = `gemini-3.1-flash-lite`** (chốt 2026-07-21). Lịch sử cùng ngày: `gemini-2.5-flash`
+> → 404 "no longer available to new users" với API key mới → đổi sang `gemini-3.5-flash` → nhưng
+> free tier của 3.5-flash chỉ **20 request/ngày** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`),
+> dùng chung cho sinh câu hỏi + chấm điểm + chat nên cạn rất nhanh (triệu chứng: "Không sinh được câu
+> hỏi lúc này"). Chuyển sang bản **flash-lite** để có quota free cao hơn hẳn, xác nhận sinh câu hỏi +
+> chấm điểm thật. **Lưu ý**: `models.list()` liệt kê cả model 404 với key mới (vd `gemini-2.5-flash-lite`
+> vẫn hiện nhưng gọi là 404) — luôn thử một call thật trước khi chốt model. Embedding vẫn hoãn cùng RAG (D8).
 
 ## Cấu trúc thư mục
 
