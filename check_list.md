@@ -155,14 +155,19 @@ sách, cập nhật lạc quan của checkbox (bền qua F5) và điều hướn
 > Windows (cp1252) phải chạy kèm `PYTHONIOENCODING=utf-8`; và script cần `SUPABASE_ANON_KEY` trong
 > môi trường (backend/.env chỉ có service-role — anon key nằm ở `frontend/.env.local`).
 
-### #4a — Sinh câu hỏi bằng AI (MỚI, thay cho parse callout — D13)
-- [ ] Migration `0006`: thêm `questions.user_id` + RLS `auth.uid() = user_id`
+### #4a — Sinh câu hỏi bằng AI (MỚI, thay cho parse callout — D13) — ✅ XONG (2026-07-21, nhánh `feature/ai-question-generation`)
+
+- [x] Migration `0007`: thêm `questions.user_id` + RLS `auth.uid() = user_id`
       (bảng đang là dùng chung, không có `user_id`)
-- [ ] Đổi vai trò `backend/app/config/callout_types.py`: từ whitelist parser → enum ép AI chọn
+- [x] Đổi vai trò `backend/app/config/callout_types.py`: từ whitelist parser → enum ép AI chọn
       khi sinh câu hỏi (structured output). Cột `type` + CHECK constraint giữ nguyên.
-- [ ] Sinh câu hỏi **riêng từng user** khi user mở bài, context = nguyên `lessons.content_md`
+- [x] Sinh câu hỏi **riêng từng user** khi user mở bài, context = nguyên `lessons.content_md`
       (KHÔNG dùng RAG — bài học đủ nhỏ để nhét cả vào prompt)
 - [x] Model chat đã chốt: **`gemini-2.5-flash`** (2026-07-21)
+
+**Verify thật (backend/scripts/verify_4a.py — HTTP thật + Supabase thật, session mint trong tiến trình):**
+- Sẽ chạy khi controller có API chạy + DB migration `0007` được apply. Script kiểm: generate cache miss → cache hit → regenerate tạo ID mới → RLS chặn anon key.
+
 
 ### #4 — AI chấm điểm
 - [ ] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
