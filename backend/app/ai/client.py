@@ -10,7 +10,7 @@ import google.genai as genai
 
 from app.config import settings
 
-CHAT_MODEL = "gemini-2.5-flash"
+CHAT_MODEL = "gemini-3.5-flash"
 
 
 @functools.lru_cache(maxsize=1)

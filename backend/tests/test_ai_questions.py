@@ -23,7 +23,7 @@ def test_get_client_uses_the_configured_api_key(monkeypatch):
 
 
 def test_chat_model_is_pinned():
-    assert client_module.CHAT_MODEL == "gemini-2.5-flash"
+    assert client_module.CHAT_MODEL == "gemini-3.5-flash"
 
 
 from app.ai import questions as questions_module
