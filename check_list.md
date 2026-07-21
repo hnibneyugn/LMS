@@ -163,17 +163,37 @@ sách, cập nhật lạc quan của checkbox (bền qua F5) và điều hướn
       khi sinh câu hỏi (structured output). Cột `type` + CHECK constraint giữ nguyên.
 - [x] Sinh câu hỏi **riêng từng user** khi user mở bài, context = nguyên `lessons.content_md`
       (KHÔNG dùng RAG — bài học đủ nhỏ để nhét cả vào prompt)
-- [x] Model chat đã chốt: **`gemini-2.5-flash`** (2026-07-21)
+- [x] Model chat: **`gemini-3.5-flash`** (đổi từ `gemini-2.5-flash` khi verify — xem dưới)
+- [x] `app/ai/` (client + `generate_questions` structured output, graceful degradation → 502),
+      2 endpoint trong `routers/lessons.py` (`GET /{slug}/questions` cache-or-generate,
+      `POST /{slug}/questions/regenerate`), section read-only `ReviewQuestions` ở trang bài học
+- [x] `backend` pytest 195/195 xanh, output sạch · frontend `npm run build` sạch
 
-**Verify thật (backend/scripts/verify_4a.py — HTTP thật + Supabase thật, session mint trong tiến trình):**
-- Sẽ chạy khi controller có API chạy + DB migration `0007` được apply. Script kiểm: generate cache miss → cache hit → regenerate tạo ID mới → RLS chặn anon key.
+**Verify thật (2026-07-21, `backend/scripts/verify_4a.py` — HTTP thật + Gemini thật + Supabase thật,
+session mint trong tiến trình, chạy trên bài `.docx` thật của tài khoản ADMIN):**
+- [x] `GET /{slug}/questions` (cache miss) → **5 câu, phủ đủ 4 loại** (recall/explain/compare/scenario),
+      tiếng Việt, bám sát nội dung bài
+- [x] `GET` lần 2 → **cùng id** (cache hit, không sinh lại, không thêm dòng DB); DB có đúng 5 dòng
+- [x] `POST /{slug}/questions/regenerate` → 5 câu mới (id khác)
+- [x] **RLS thật:** anon key đọc `questions` ra **0 dòng**
+- [x] Dọn sạch: các dòng `questions` script tạo đã xoá, tài khoản về nguyên trạng
+
+> **Đổi model khi verify (2026-07-21):** `gemini-2.5-flash` trả `404 NOT_FOUND — no longer available
+> to new users` với API key mới (free tier). Đã test thật nhiều model rồi chốt **`gemini-3.5-flash`**
+> (chạy được + structured output OK trên chính key này). `response_schema` dạng dict được google-genai
+> chấp nhận — xác nhận qua lần chạy thật.
+>
+> **Sửa DB phát hiện khi verify:** bảng `questions` có sẵn constraint cũ `questions_lesson_order_unique
+> (lesson_id, order_index)` từ thời câu hỏi dùng chung — **không nằm trong migration nào**, chỉ có
+> trong DB thật. Nó chặn người thứ hai sinh câu hỏi cho cùng một bài. Đã thêm `drop constraint if
+> exists` vào `0007` và apply.
 
 
 ### #4 — AI chấm điểm
 - [ ] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
 - [ ] Lưu `quiz_attempts` + upsert `daily_activity`
-- [x] Model chat đã chốt: **`gemini-2.5-flash`** (2026-07-21)
-- Deps còn thiếu: `google-genai`
+- [x] Model chat đã chốt: **`gemini-3.5-flash`** (2026-07-21)
+- `google-genai` **đã thêm** ở #4a (client dùng chung `app/ai/client.py`)
 
 ### #5 — Socratic Chatbot
 - [ ] `POST /api/chat/{lesson_id}` — `StreamingResponse`, sidebar cạnh lý thuyết
@@ -245,9 +265,11 @@ Từ review #1b (đã triage, không chặn gì):
 ## Việc cần user (blocker)
 
 - [x] Key Supabase (URL/anon/service-role), Gemini, GitHub webhook secret, `ADMIN_EMAIL` — đã có
+      (lưu ý: `GEMINI_API_KEY` phải nằm trong `backend/.env` — thiếu ở đó thì generate sẽ 502)
 - [x] Supabase Site URL = `http://localhost:5173` cho dev — đã đổi
 - [x] Không cần `SUPABASE_JWT_SECRET` nữa (verify bằng JWKS)
-- [x] Model AI Gemini (chat) đã chốt: **`gemini-2.5-flash`** (2026-07-21). Embedding vẫn hoãn cùng RAG.
+- [x] Model AI Gemini (chat) đã chốt: **`gemini-3.5-flash`** (2026-07-21; `gemini-2.5-flash` bị Google
+      khóa với key mới). Embedding vẫn hoãn cùng RAG.
 - [x] **R2 keys** (`R2_ACCOUNT_ID`, access key, secret, bucket) — đã có và đã verify ghi được lên
       bucket `binh` thật (token ban đầu chỉ có quyền đọc, đã đổi sang Object Read & Write)
 - Không cần `GITHUB_WEBHOOK_SECRET` nữa (D17 bỏ Obsidian sync)

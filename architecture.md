@@ -75,7 +75,8 @@ session, chỉ verify JWT đính kèm mỗi request.
 - Grading: structured output ép theo Pydantic model `{ score, missing_points[], comment }`.
 - Chat: streaming → FastAPI `StreamingResponse`.
 - Embedding: model đa phương thức, `output_dimensionality = 768` (phải khớp `VECTOR(768)`).
-- Model chat = `gemini-2.5-flash` (chốt 2026-07-21). Embedding — chốt sau cùng RAG.
+- Model chat = `gemini-3.5-flash` (chốt 2026-07-21; đổi từ `gemini-2.5-flash` — bản 2.5 bị Google
+  khóa với API key mới, phát hiện khi verify #4a). Embedding — chốt sau cùng RAG.
 
 ## Tổ chức code (folder layout)
 
