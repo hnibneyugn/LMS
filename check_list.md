@@ -309,6 +309,18 @@ Từ review #1b (đã triage, không chặn gì):
 - [ ] Độ dài slug có thể vượt quá 80 ký tự đã tài liệu hoá một khi nối thêm `-{order_index}` và hậu tố
       `-N` (vô hại: cột DB là `text` không giới hạn).
 
+Từ review #5 (đã triage, không chặn merge — bối cảnh < 10 người, mỗi bài một user):
+- [ ] **Lost-update** khi hai POST `/api/chat/{lesson_id}` cùng bài chạy song song: mỗi request ghi đè
+      cả mảng `messages` theo `history` đọc lúc vào → lượt của request kết thúc sau nuốt lượt kia. Cần
+      atomic append hoặc advisory lock theo session (frontend `sending` guard đã chặn trong một panel).
+- [ ] Stream Gemini rỗng (0 chunk) để lại tin user mồ côi không có phản hồi → lượt sau `contents` thành
+      `[user, user]`. Xác suất thấp; nhánh này chưa có test. Cân nhắc lưu tin trợ giảng fallback hoặc
+      hoàn tác tin user khi reply rỗng.
+- [ ] `ChatPanel` khi đóng: các control con (textarea/nút) vẫn focus được (mới chỉ `aria-hidden`) — dùng
+      `inert` trên `<aside>` khi `!open` để chặn cả focus lẫn ARIA.
+- [ ] Nút "Xóa hội thoại" không `disabled` khi đang stream (bị chặn bằng early-return trong `reset()`,
+      nên bấm giữa chừng là no-op thầm lặng) — thêm `disabled={sending}` cho đúng affordance.
+
 ## Việc cần user (blocker)
 
 - [x] Key Supabase (URL/anon/service-role), Gemini, GitHub webhook secret, `ADMIN_EMAIL` — đã có
