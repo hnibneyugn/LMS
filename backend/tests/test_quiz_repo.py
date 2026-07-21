@@ -67,3 +67,20 @@ def test_daily_get_and_upsert_key_on_user_and_date(stores):
     assert len(stores["daily_activity"]) == 1
     assert repo.get_daily(USER_ID, "2026-07-21")["questions_done_count"] == 2
     assert repo.get_daily(OTHER_USER_ID, "2026-07-21") is None
+
+
+def test_upsert_daily_keys_on_user_and_date_not_date_alone(stores):
+    # Two users, same date -> two separate rows. If upsert_daily's on_conflict
+    # dropped user_id (keyed on activity_date alone), the second upsert would
+    # overwrite the first and this would collapse to one row.
+    repo = quiz_router._Repo()
+    repo.upsert_daily(
+        {"user_id": USER_ID, "activity_date": "2026-07-21", "questions_done_count": 1}
+    )
+    repo.upsert_daily(
+        {"user_id": OTHER_USER_ID, "activity_date": "2026-07-21", "questions_done_count": 5}
+    )
+
+    assert len(stores["daily_activity"]) == 2
+    assert repo.get_daily(USER_ID, "2026-07-21")["questions_done_count"] == 1
+    assert repo.get_daily(OTHER_USER_ID, "2026-07-21")["questions_done_count"] == 5
