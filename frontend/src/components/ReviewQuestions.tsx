@@ -10,6 +10,7 @@ import { gradeAnswer, getAttempts } from "@/lib/quiz"
 
 /** Per-question result shown after grading (or loaded from a past attempt). */
 interface Result {
+  user_answer: string
   score: number
   missing_points: string[]
   comment: string
@@ -48,14 +49,20 @@ export function ReviewQuestions({ slug }: { slug: string }) {
       } else {
         const attempts = await getAttempts(slug)
         const loaded: Record<string, Result> = {}
+        const loadedAnswers: Record<string, string> = {}
         for (const a of attempts) {
           loaded[a.question_id] = {
+            user_answer: a.user_answer,
             score: a.score,
             missing_points: a.missing_points,
             comment: a.comment,
           }
+          // Prefill so "Làm lại" reopens the textarea with the last answer
+          // (kept across reloads, not just within the current session).
+          loadedAnswers[a.question_id] = a.user_answer
         }
         setResults(loaded)
+        setAnswers(loadedAnswers)
       }
     } catch (err) {
       setError(errorMessage(err))
@@ -74,6 +81,7 @@ export function ReviewQuestions({ slug }: { slug: string }) {
       setResults((r) => ({
         ...r,
         [questionId]: {
+          user_answer: answer,
           score: result.score,
           missing_points: result.missing_points,
           comment: result.comment,
@@ -140,6 +148,10 @@ export function ReviewQuestions({ slug }: { slug: string }) {
 
                 {result ? (
                   <div className="space-y-2 rounded-md border bg-gray-50 p-3">
+                    <p className="whitespace-pre-wrap text-sm text-gray-700">
+                      <span className="font-medium">Câu trả lời của bạn: </span>
+                      {result.user_answer}
+                    </p>
                     <p className="text-sm font-semibold">Điểm: {result.score}/10</p>
                     {result.comment && (
                       <p className="text-sm">{result.comment}</p>

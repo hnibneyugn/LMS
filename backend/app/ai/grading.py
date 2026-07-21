@@ -82,7 +82,10 @@ def _validate(raw: object) -> GradeResult:
     if not isinstance(comment, str):
         raise GradingError(_FAILURE_MESSAGE)
 
-    clamped = max(0.0, min(10.0, float(score)))
+    # Round to one decimal so the returned score matches what the DB stores
+    # (quiz_attempts.ai_score is numeric(3,1)); otherwise the immediate result
+    # and the reloaded attempt could differ (7.55 shown, 7.6 stored).
+    clamped = round(max(0.0, min(10.0, float(score))), 1)
     return GradeResult(
         score=clamped,
         missing_points=[m.strip() for m in missing if m.strip()],
