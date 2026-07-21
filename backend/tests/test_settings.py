@@ -18,3 +18,14 @@ def test_limits_match_the_spec():
     assert settings.MAX_FILE_BYTES == 20 * 1024 * 1024
     assert settings.PRESIGN_EXPIRY_SECONDS == 900
     assert settings.ALLOWED_FILE_TYPES == frozenset({"md", "docx", "pptx", "pdf"})
+
+
+def test_gemini_api_key_is_read_from_env(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "g-secret")
+    assert settings.gemini_api_key() == "g-secret"
+
+
+def test_missing_gemini_api_key_raises_runtime_error(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        settings.gemini_api_key()
