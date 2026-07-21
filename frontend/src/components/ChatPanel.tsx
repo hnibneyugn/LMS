@@ -49,6 +49,14 @@ export function ChatPanel({
     }
   }, [open, loaded, lessonId])
 
+  // Lesson changed (prev/next nav without closing the panel): drop the old
+  // conversation so the new lesson's history loads fresh on next open.
+  useEffect(() => {
+    setMessages([])
+    setLoaded(false)
+    setError(null)
+  }, [lessonId])
+
   // Keep the newest message in view as it streams.
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight)
