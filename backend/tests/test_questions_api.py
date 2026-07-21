@@ -187,6 +187,30 @@ def test_regenerate_keeps_old_set_when_generation_fails(fakes, monkeypatch):
     assert qrepo.rows[0]["question_text"] == "Câu cũ?"
 
 
+def test_get_on_empty_content_is_422_without_calling_the_model(fakes):
+    lrepo, qrepo, calls = fakes
+    lrepo.lessons = [_lesson(content="   ")]
+
+    res = client.get("/api/lessons/gt-0/questions", headers=auth_headers())
+
+    assert res.status_code == 422
+    # A lesson with no real text must never reach the model or the DB.
+    assert calls["count"] == 0
+    assert qrepo.inserted == []
+
+
+def test_regenerate_on_empty_content_is_422_without_calling_the_model(fakes):
+    lrepo, qrepo, calls = fakes
+    lrepo.lessons = [_lesson(content="   ")]
+
+    res = client.post("/api/lessons/gt-0/questions/regenerate", headers=auth_headers())
+
+    assert res.status_code == 422
+    assert calls["count"] == 0
+    # Nothing generated means nothing deleted -- the old set (if any) is safe.
+    assert qrepo.deleted == []
+
+
 def test_questions_require_a_token(fakes):
     assert client.get("/api/lessons/gt-0/questions").status_code == 401
     assert client.post("/api/lessons/gt-0/questions/regenerate").status_code == 401
