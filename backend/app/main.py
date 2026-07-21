@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import files, health, lessons, me, quiz
+from app.routers import chat, files, health, lessons, me, quiz
 
 load_dotenv()
 
@@ -28,3 +28,4 @@ app.include_router(me.router)
 app.include_router(files.router)
 app.include_router(lessons.router)
 app.include_router(quiz.router)
+app.include_router(chat.router)
