@@ -63,6 +63,11 @@ class FakeTable:
         self._neq_filters: dict[str, object] = {}
         self._update_values: dict | None = None
         self._insert_values: dict | None = None
+        self._upsert_values: dict | None = None
+        # Conflict target, as column names. Defaults to the primary key most
+        # tables here use; lesson_progress passes "user_id,lesson_id" because
+        # it has no `id` column at all.
+        self._upsert_key: tuple[str, ...] = ("id",)
         self._maybe_single = False
 
     def select(self, *_columns):
@@ -70,6 +75,11 @@ class FakeTable:
 
     def insert(self, values):
         self._insert_values = values
+        return self
+
+    def upsert(self, values, on_conflict="id"):
+        self._upsert_values = values
+        self._upsert_key = tuple(c.strip() for c in on_conflict.split(","))
         return self
 
     def update(self, values):
@@ -100,6 +110,10 @@ class FakeTable:
         ]
 
     def execute(self):
+        if self._upsert_values is not None:
+            key = tuple(self._upsert_values[c] for c in self._upsert_key)
+            self._store[key] = {**self._store.get(key, {}), **self._upsert_values}
+            return type("Res", (), {"data": [dict(self._store[key])]})()
         if self._insert_values is not None:
             self._store[self._insert_values["id"]] = dict(self._insert_values)
             return type("Res", (), {"data": [dict(self._insert_values)]})()

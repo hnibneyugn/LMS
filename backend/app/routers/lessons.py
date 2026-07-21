@@ -1,5 +1,7 @@
 """Reading lessons: the library list, one lesson's content, and progress."""
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
@@ -37,6 +39,15 @@ class LessonDetailOut(LessonOut):
     content_md: str
     prev: LessonNav | None = None
     next: LessonNav | None = None
+
+
+class ProgressRequest(BaseModel):
+    done: bool
+
+
+class ProgressOut(BaseModel):
+    done: bool
+    completed_at: str | None = None
 
 
 class _Repo:
@@ -90,6 +101,26 @@ class _Repo:
         )
         # postgrest's maybe_single returns None itself when nothing matched.
         return result.data if result else None
+
+    def get_lesson(self, lesson_id: str, user_id: str) -> dict | None:
+        result = (
+            db.admin()
+            .table("lessons")
+            .select("id")
+            .eq("id", lesson_id)
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        return result.data if result else None
+
+    def upsert_progress(self, values: dict) -> None:
+        # lesson_progress's primary key is (user_id, lesson_id), so the
+        # conflict target must name both -- the default `id` column does not
+        # exist on this table.
+        db.admin().table("lesson_progress").upsert(
+            values, on_conflict="user_id,lesson_id"
+        ).execute()
 
 
 repo = _Repo()
@@ -157,3 +188,26 @@ def get_lesson(slug: str, user: CurrentUser = Depends(get_current_user)):
     merged = _merge(row, repo.list_file_names(user.user_id), repo.list_progress(user.user_id))
     before, after = _neighbours(row, repo.list_lessons(user.user_id))
     return {**merged, "prev": before, "next": after}
+
+
+@router.put("/{lesson_id}/progress", response_model=ProgressOut)
+def set_progress(
+    lesson_id: str,
+    body: ProgressRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    if repo.get_lesson(lesson_id, user.user_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+
+    completed_at = (
+        datetime.now(timezone.utc).isoformat() if body.done else None
+    )
+    repo.upsert_progress(
+        {
+            "user_id": user.user_id,
+            "lesson_id": lesson_id,
+            "status": "done" if body.done else "not_done",
+            "completed_at": completed_at,
+        }
+    )
+    return {"done": body.done, "completed_at": completed_at}

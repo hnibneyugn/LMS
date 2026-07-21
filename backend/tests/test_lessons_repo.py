@@ -10,7 +10,7 @@ those tests. The tests here run the REAL `_Repo` against a fake supabase
 CLIENT instead, so a dropped `user_id` filter fails a test here even though
 it would sail straight through test_lessons_api.py.
 
-Task 3 will extend this file with `get_lesson` and upsert coverage.
+Task 3 extends this file with `get_lesson` and upsert coverage below.
 """
 
 import pytest
@@ -115,3 +115,48 @@ def test_real_repo_get_lesson_by_slug_does_not_return_another_users_row(real_rep
 
 def test_real_repo_get_lesson_by_slug_returns_none_for_an_unknown_slug(real_repo):
     assert real_repo.get_lesson_by_slug(USER_ID, "khong-co") is None
+
+
+# --- progress (Task 3) --------------------------------------------------------
+
+
+@pytest.fixture
+def stores(monkeypatch):
+    """Empty per-table stores, routed the same way `real_repo` does, but
+    starting blank -- the progress/get_lesson tests below want full control
+    over exactly what rows exist rather than `real_repo`'s fixed fixtures.
+    """
+    tables = {
+        "lessons": {},
+        "user_files": {},
+        "lesson_progress": {},
+    }
+    client_ = FakeClient({}, tables=tables)
+    monkeypatch.setattr(lessons_router.db, "admin", lambda: client_)
+    return tables
+
+
+def test_real_repo_get_lesson_does_not_return_another_users_row(stores):
+    stores["lessons"]["l1"] = {"id": "l1", "user_id": USER_ID, "slug": "gt-0"}
+
+    repo = lessons_router._Repo()
+
+    assert repo.get_lesson("l1", USER_ID)["id"] == "l1"
+    assert repo.get_lesson("l1", OTHER_USER_ID) is None
+
+
+def test_real_repo_upsert_progress_keys_on_user_and_lesson(stores):
+    repo = lessons_router._Repo()
+
+    repo.upsert_progress(
+        {"user_id": USER_ID, "lesson_id": "l1", "status": "done", "completed_at": "t"}
+    )
+    repo.upsert_progress(
+        {"user_id": USER_ID, "lesson_id": "l1", "status": "not_done", "completed_at": None}
+    )
+
+    # Second call must replace the first, not add a second row.
+    assert len(stores["lesson_progress"]) == 1
+    stored = next(iter(stores["lesson_progress"].values()))
+    assert stored["status"] == "not_done"
+    assert stored["completed_at"] is None

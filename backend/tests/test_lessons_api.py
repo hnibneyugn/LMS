@@ -192,3 +192,51 @@ def test_detail_of_an_unknown_slug_is_404(repo):
 
 def test_detail_requires_a_token(repo):
     assert client.get("/api/lessons/gt-0").status_code == 401
+
+
+# --- progress ------------------------------------------------------------------
+
+def test_marking_done_upserts_progress_with_a_timestamp(repo):
+    repo.lessons = [make_lesson("l1", "gt-0", "Chương 1", 0, None)]
+
+    res = client.put(
+        "/api/lessons/l1/progress", json={"done": True}, headers=auth_headers()
+    )
+
+    assert res.status_code == 200
+    assert res.json()["done"] is True
+    assert res.json()["completed_at"] is not None
+    written = repo.upserted[-1]
+    assert written["user_id"] == USER_ID
+    assert written["lesson_id"] == "l1"
+    assert written["status"] == "done"
+    assert written["completed_at"] == res.json()["completed_at"]
+
+
+def test_unmarking_clears_the_timestamp(repo):
+    repo.lessons = [make_lesson("l1", "gt-0", "Chương 1", 0, None)]
+
+    client.put("/api/lessons/l1/progress", json={"done": True}, headers=auth_headers())
+    res = client.put(
+        "/api/lessons/l1/progress", json={"done": False}, headers=auth_headers()
+    )
+
+    assert res.json() == {"done": False, "completed_at": None}
+    assert repo.upserted[-1]["status"] == "not_done"
+    assert repo.upserted[-1]["completed_at"] is None
+
+
+def test_progress_on_another_users_lesson_is_404_and_writes_nothing(repo):
+    repo.lessons = [make_lesson("l9", "cua-ho", "Của họ", 0, None, user_id=OTHER_USER_ID)]
+
+    res = client.put(
+        "/api/lessons/l9/progress", json={"done": True}, headers=auth_headers()
+    )
+
+    assert res.status_code == 404
+    assert repo.upserted == []
+
+
+def test_progress_requires_a_token(repo):
+    res = client.put("/api/lessons/l1/progress", json={"done": True})
+    assert res.status_code == 401
