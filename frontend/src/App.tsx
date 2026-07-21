@@ -3,6 +3,7 @@ import { Login } from "@/pages/Login"
 import { AuthCallback } from "@/pages/AuthCallback"
 import { Home } from "@/pages/Home"
 import { Files } from "@/pages/Files"
+import { Lessons } from "@/pages/Lessons"
 import { ReviewChapters } from "@/pages/ReviewChapters"
 import { Account } from "@/pages/Account"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
@@ -26,6 +27,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ReviewChapters />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lessons"
+          element={
+            <ProtectedRoute>
+              <Lessons />
             </ProtectedRoute>
           }
         />
