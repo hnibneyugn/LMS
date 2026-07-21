@@ -41,7 +41,7 @@ nội dung bài, chấm điểm + phản biện (Socratic). Cả nhóm chung m�
 | Ingest | User upload file → R2 (presigned) → extract → cắt chương → `lessons` |
 | Hosting | Frontend: Vercel (static build) · Backend: Koyeb (Docker) |
 
-> **Model IDs (chat + embedding) — TẠM HOÃN.** Sẽ chốt khi build feature AI. Xem `check_list.md`.
+> **Model chat = `gemini-2.5-flash`** (chốt 2026-07-21). Embedding model vẫn hoãn cùng RAG (D8).
 
 ## Cấu trúc thư mục
 

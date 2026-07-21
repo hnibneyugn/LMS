@@ -162,12 +162,12 @@ sách, cập nhật lạc quan của checkbox (bền qua F5) và điều hướn
       khi sinh câu hỏi (structured output). Cột `type` + CHECK constraint giữ nguyên.
 - [ ] Sinh câu hỏi **riêng từng user** khi user mở bài, context = nguyên `lessons.content_md`
       (KHÔNG dùng RAG — bài học đủ nhỏ để nhét cả vào prompt)
-- [!] Phụ thuộc: chốt model chat ID
+- [x] Model chat đã chốt: **`gemini-2.5-flash`** (2026-07-21)
 
 ### #4 — AI chấm điểm
 - [ ] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
 - [ ] Lưu `quiz_attempts` + upsert `daily_activity`
-- [!] **Chốt model chat ID** (spec gợi ý `gemini-2.5-pro` / `gemini-2.0-flash`)
+- [x] Model chat đã chốt: **`gemini-2.5-flash`** (2026-07-21)
 - Deps còn thiếu: `google-genai`
 
 ### #5 — Socratic Chatbot
@@ -242,7 +242,7 @@ Từ review #1b (đã triage, không chặn gì):
 - [x] Key Supabase (URL/anon/service-role), Gemini, GitHub webhook secret, `ADMIN_EMAIL` — đã có
 - [x] Supabase Site URL = `http://localhost:5173` cho dev — đã đổi
 - [x] Không cần `SUPABASE_JWT_SECRET` nữa (verify bằng JWKS)
-- [!] Chốt model AI Gemini (chat) trước #4a/#4
+- [x] Model AI Gemini (chat) đã chốt: **`gemini-2.5-flash`** (2026-07-21). Embedding vẫn hoãn cùng RAG.
 - [x] **R2 keys** (`R2_ACCOUNT_ID`, access key, secret, bucket) — đã có và đã verify ghi được lên
       bucket `binh` thật (token ban đầu chỉ có quyền đọc, đã đổi sang Object Read & Write)
 - Không cần `GITHUB_WEBHOOK_SECRET` nữa (D17 bỏ Obsidian sync)
