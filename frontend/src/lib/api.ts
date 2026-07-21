@@ -53,3 +53,43 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   }
   return res.json()
 }
+
+/**
+ * Like apiFetch but returns the raw Response so the caller can read a stream.
+ * apiFetch always does res.json(), which consumes the body — useless for the
+ * token-by-token chat reply. Same Bearer + Vietnamese network-error handling.
+ */
+export async function apiStream(
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error("Chưa đăng nhập")
+
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: { ...(options.headers ?? {}), Authorization: `Bearer ${token}` },
+    })
+  } catch (err) {
+    console.error("apiStream network failure", path, err)
+    throw new ApiError(
+      "Không kết nối được máy chủ. Kiểm tra kết nối mạng rồi thử lại.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    let detail = `Yêu cầu thất bại (${res.status})`
+    try {
+      const body = await res.json()
+      if (typeof body?.detail === "string") detail = body.detail
+    } catch {
+      // Body was not JSON -- keep the fallback.
+    }
+    throw new ApiError(detail, res.status)
+  }
+  return res
+}
