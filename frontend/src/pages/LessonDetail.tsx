@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/api"
 import { errorMessage } from "@/lib/files"
 import { getLesson, setLessonProgress, type LessonDetail } from "@/lib/lessons"
 import { ReviewQuestions } from "@/components/ReviewQuestions"
+import { ChatPanel } from "@/components/ChatPanel"
 
 export function LessonDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -14,6 +15,7 @@ export function LessonDetailPage() {
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
 
   useEffect(() => {
     if (!slug) return
@@ -101,15 +103,24 @@ export function LessonDetailPage() {
         )}
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-xl font-semibold">{lesson.title}</h1>
-          <label className="flex shrink-0 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={lesson.done}
-              disabled={saving}
-              onChange={() => void toggleDone()}
-            />
-            Đã học
-          </label>
+          <div className="flex shrink-0 items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={lesson.done}
+                disabled={saving}
+                onChange={() => void toggleDone()}
+              />
+              Đã học
+            </label>
+            <button
+              type="button"
+              onClick={() => setChatOpen(true)}
+              className="shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              Hỏi đáp Socratic
+            </button>
+          </div>
         </div>
       </div>
 
@@ -139,6 +150,8 @@ export function LessonDetailPage() {
           <span />
         )}
       </nav>
+
+      <ChatPanel lessonId={lesson.id} open={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   )
 }
