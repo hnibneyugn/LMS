@@ -43,19 +43,30 @@ export function LessonDetailPage() {
   async function toggleDone() {
     if (!lesson || saving) return
     const next = !lesson.done
+    // Capture the id now: this component instance persists across
+    // prev/next navigation (only `slug` changes), so by the time the PUT
+    // below resolves `lesson` in scope may belong to a different chapter.
+    const lessonId = lesson.id
     // Optimistic: flip now, roll back if the write fails. Reading feels
     // instant and a failed write must not leave the box lying.
     setLesson({ ...lesson, done: next })
     setSaving(true)
     setError(null)
     try {
-      const result = await setLessonProgress(lesson.id, next)
+      const result = await setLessonProgress(lessonId, next)
       setLesson((current) =>
-        current === null ? current : { ...current, ...result },
+        // If the user navigated to another lesson while this write was in
+        // flight, `current` is no longer the lesson we wrote -- leave it
+        // untouched instead of stamping this outcome onto the wrong one.
+        current === null || current.id !== lessonId
+          ? current
+          : { ...current, ...result },
       )
     } catch (err) {
       setLesson((current) =>
-        current === null ? current : { ...current, done: !next },
+        current === null || current.id !== lessonId
+          ? current
+          : { ...current, done: !next },
       )
       setError(errorMessage(err))
     } finally {
