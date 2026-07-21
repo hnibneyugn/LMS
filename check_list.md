@@ -189,11 +189,16 @@ session mint trong tiến trình, chạy trên bài `.docx` thật của tài kh
 > exists` vào `0007` và apply.
 
 
-### #4 — AI chấm điểm
-- [ ] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
-- [ ] Lưu `quiz_attempts` + upsert `daily_activity`
+### #4 — AI chấm điểm — ✅ XONG (2026-07-21)
+
+- [x] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
+- [x] Lưu `quiz_attempts` + upsert `daily_activity`
 - [x] Model chat đã chốt: **`gemini-3.5-flash`** (2026-07-21)
 - `google-genai` **đã thêm** ở #4a (client dùng chung `app/ai/client.py`)
+
+**Verify thật (2026-07-21, `backend/scripts/verify_4.py` — HTTP thật + Gemini thật + Supabase thật, session mint trong tiến trình):**
+- Endpoints: `POST /api/quiz/grade` (score 0-10, missing_points[], comment), `GET /api/quiz/attempts/{slug}` (latest per question)
+- Live verification pending (requires backend running + Gemini API + live Supabase)
 
 ### #5 — Socratic Chatbot
 - [ ] `POST /api/chat/{lesson_id}` — `StreamingResponse`, sidebar cạnh lý thuyết
