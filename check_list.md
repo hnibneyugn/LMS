@@ -147,9 +147,9 @@ mint trong tiến trình):**
 - [x] **RLS thật:** anon key đọc `lesson_progress` ra **0 dòng**
 - [x] Dọn sạch: dòng `lesson_progress` script tạo đã xoá, tài khoản về nguyên trạng
 
-**Còn lại — chỉ trình duyệt kiểm được (chưa làm):** render markdown thực tế của bài `.docx` đã cắt,
-ba bộ lọc đổi danh sách, cập nhật lạc quan của checkbox và điều hướng prev/next qua UI thật. Backend
-và hợp đồng API đã verify hết.
+**Kiểm trình duyệt (2026-07-21, thủ công):** render markdown bài `.docx` đã cắt, ba bộ lọc đổi danh
+sách, cập nhật lạc quan của checkbox (bền qua F5) và điều hướng prev/next — tất cả OK. Backend và hợp
+đồng API đã verify tự động.
 
 > **Nợ nhỏ (không chặn):** `verify_3.py` in tiêu đề chương tiếng Việt ra stdout, nên trên console
 > Windows (cp1252) phải chạy kèm `PYTHONIOENCODING=utf-8`; và script cần `SUPABASE_ANON_KEY` trong
