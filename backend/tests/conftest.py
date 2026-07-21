@@ -63,6 +63,7 @@ class FakeTable:
         self._neq_filters: dict[str, object] = {}
         self._update_values: dict | None = None
         self._insert_values: dict | None = None
+        self._delete = False
         self._upsert_values: dict | None = None
         # Conflict target, as column names. Defaults to the primary key most
         # tables here use; lesson_progress passes "user_id,lesson_id" because
@@ -84,6 +85,10 @@ class FakeTable:
 
     def update(self, values):
         self._update_values = values
+        return self
+
+    def delete(self):
+        self._delete = True
         return self
 
     def eq(self, column, value):
@@ -115,9 +120,19 @@ class FakeTable:
             self._store[key] = {**self._store.get(key, {}), **self._upsert_values}
             return type("Res", (), {"data": [dict(self._store[key])]})()
         if self._insert_values is not None:
-            self._store[self._insert_values["id"]] = dict(self._insert_values)
-            return type("Res", (), {"data": [dict(self._insert_values)]})()
+            rows = (
+                self._insert_values
+                if isinstance(self._insert_values, list)
+                else [self._insert_values]
+            )
+            for row in rows:
+                self._store[row["id"]] = dict(row)
+            return type("Res", (), {"data": [dict(r) for r in rows]})()
         matches = self._matches()
+        if self._delete:
+            for row in matches:
+                self._store.pop(row["id"], None)
+            return type("Res", (), {"data": [dict(r) for r in matches]})()
         if self._update_values is not None:
             self._write_log.append(
                 {

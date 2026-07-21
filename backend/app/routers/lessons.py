@@ -1,11 +1,13 @@
 """Reading lessons: the library list, one lesson's content, and progress."""
 
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app import db
+from app.ai.questions import QuestionGenerationError, generate_questions
 from app.dependencies.auth import CurrentUser, get_current_user
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
@@ -48,6 +50,13 @@ class ProgressRequest(BaseModel):
 class ProgressOut(BaseModel):
     done: bool
     completed_at: str | None = None
+
+
+class QuestionOut(BaseModel):
+    id: str
+    type: str
+    question_text: str
+    order_index: int
 
 
 class _Repo:
@@ -124,6 +133,37 @@ class _Repo:
 
 
 repo = _Repo()
+
+
+class _QuestionRepo:
+    """Data layer for per-user review questions.
+
+    Service-role client (bypasses RLS), so every query filters user_id
+    explicitly -- see _Repo for the same discipline.
+    """
+
+    def list_questions(self, user_id: str, lesson_id: str) -> list[dict]:
+        result = (
+            db.admin()
+            .table("questions")
+            .select("id, type, question_text, order_index")
+            .eq("user_id", user_id)
+            .eq("lesson_id", lesson_id)
+            .order("order_index")
+            .execute()
+        )
+        return result.data or []
+
+    def insert_questions(self, rows: list[dict]) -> None:
+        db.admin().table("questions").insert(rows).execute()
+
+    def delete_questions(self, user_id: str, lesson_id: str) -> None:
+        db.admin().table("questions").delete().eq("user_id", user_id).eq(
+            "lesson_id", lesson_id
+        ).execute()
+
+
+question_repo = _QuestionRepo()
 
 
 def _merge(row: dict, file_names: dict[str, str], progress: dict[str, dict]) -> dict:
@@ -211,3 +251,82 @@ def set_progress(
         }
     )
     return {"done": body.done, "completed_at": completed_at}
+
+
+def _build_question_rows(
+    user_id: str, lesson_id: str, generated: list
+) -> list[dict]:
+    """Generated questions -> rows to insert, ids minted here (like files.py)
+    so the response never has to round-trip the DB to learn them."""
+    return [
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "lesson_id": lesson_id,
+            "type": q.type,
+            "question_text": q.question_text,
+            "order_index": index,
+        }
+        for index, q in enumerate(generated)
+    ]
+
+
+@router.get("/{slug}/questions", response_model=list[QuestionOut])
+def get_questions(slug: str, user: CurrentUser = Depends(get_current_user)):
+    lesson = repo.get_lesson_by_slug(user.user_id, slug)
+    if lesson is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+
+    existing = question_repo.list_questions(user.user_id, lesson["id"])
+    if existing:
+        return existing
+
+    content = lesson.get("content_md") or ""
+    if not content.strip():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Bài học không có nội dung để sinh câu hỏi.",
+        )
+
+    try:
+        generated = generate_questions(content)
+    except QuestionGenerationError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+
+    rows = _build_question_rows(user.user_id, lesson["id"], generated)
+    try:
+        question_repo.insert_questions(rows)
+    except Exception:
+        # Lost a race with a concurrent first-open (unique index collision) or
+        # a transient write error. If the other writer's rows landed, return
+        # those instead of double-generating; otherwise surface the failure.
+        raced = question_repo.list_questions(user.user_id, lesson["id"])
+        if raced:
+            return raced
+        raise
+    return rows
+
+
+@router.post("/{slug}/questions/regenerate", response_model=list[QuestionOut])
+def regenerate_questions(slug: str, user: CurrentUser = Depends(get_current_user)):
+    lesson = repo.get_lesson_by_slug(user.user_id, slug)
+    if lesson is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+
+    content = lesson.get("content_md") or ""
+    if not content.strip():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Bài học không có nội dung để sinh câu hỏi.",
+        )
+
+    # Generate BEFORE deleting: if the model fails, the old set is still there.
+    try:
+        generated = generate_questions(content)
+    except QuestionGenerationError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+
+    question_repo.delete_questions(user.user_id, lesson["id"])
+    rows = _build_question_rows(user.user_id, lesson["id"], generated)
+    question_repo.insert_questions(rows)
+    return rows
