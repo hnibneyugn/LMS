@@ -213,9 +213,38 @@ session mint trong tiến trình, trên câu hỏi thật của #4a):**
 **Kiểm trình duyệt (chưa làm — chỉ React behavior):** nộp bài trên UI thật, F5 vẫn thấy điểm, "Làm lại".
 Backend + hợp đồng API đã verify tự động.
 
-### #5 — Socratic Chatbot
-- [ ] `POST /api/chat/{lesson_id}` — `StreamingResponse`, sidebar cạnh lý thuyết
-- [ ] Lưu `chat_sessions.messages`
+### #5 — Socratic Chatbot — ✅ XONG (2026-07-21, nhánh `feature/socratic-chatbot`)
+Spec: `docs/superpowers/specs/2026-07-21-socratic-chatbot-design.md`
+Plan: `docs/superpowers/plans/2026-07-21-socratic-chatbot.md`
+- [x] Migration `0008`: unique index `(user_id, lesson_id)` trên `chat_sessions` — cưỡng chế "một
+      cuộc bền vững / (user, bài)", load-or-create không tạo hai dòng khi hai request đua nhau
+- [x] `app/ai/chat.py`: `stream_socratic_reply` (Gemini `generate_content_stream`, model
+      `gemini-3.1-flash-lite`), **system prompt Socratic thuần** — không đưa đáp án thẳng, chỉ gợi mở
+      bằng câu hỏi; graceful degradation → `ChatError` (tiếng Việt)
+- [x] `POST /api/chat/{lesson_id}` — `StreamingResponse` (`text/plain`); lưu tin user **trước** khi
+      stream (không mất nếu lỗi), append tin trợ giảng sau khi stream xong; lỗi up-front → 502, lỗi
+      giữa chừng → dừng êm nhưng vẫn lưu phần đã nhận. `GET` trả lịch sử, `DELETE` xóa hội thoại
+- [x] Lưu `chat_sessions.messages` (mảng `{role, content}`), một dòng / (user, bài); `updated_at`
+      đóng dấu bằng ISO timestamp (không dùng chuỗi `"now()"`)
+- [x] Frontend: `apiStream` (đọc body stream, khác `apiFetch` luôn `.json()`) + `lib/chat.ts`;
+      `ChatPanel.tsx` **panel trượt từ phải** (D-chat-2, giữ cột đọc `max-w-3xl`), nút "Hỏi đáp
+      Socratic" trên trang bài, stream token, nút "Xóa hội thoại", reply render markdown (không rehype-raw)
+- [x] `backend` pytest 236/236 xanh, output sạch (`test_chat.py`, `test_chat_api.py`) · frontend
+      `npm run build` + `oxlint` sạch
+- **D-chat-1** Socratic thuần · **D-chat-2** panel trượt phải · **D-chat-3** một cuộc bền vững + nút xóa
+
+**Verify thật (2026-07-21, `backend/scripts/verify_5.py` — HTTP thật + Gemini thật + Supabase thật,
+session mint trong tiến trình, trên bài `.docx` thật của tài khoản admin):**
+- [x] `POST /api/chat/{lesson_id}` → reply **stream 301 ký tự, tiếng Việt, kiểu Socratic** (hỏi lại
+      "theo bạn, tại sao DevOps lại tin…" thay vì giải đáp)
+- [x] `GET` sau 1 lượt → đúng 2 message (user + assistant); sau lượt 2 → 4 message (ngữ cảnh được nối)
+- [x] `DELETE` → `GET` trả `messages: []`
+- [x] **RLS thật:** anon key đọc `chat_sessions` → **0 dòng**
+- [x] Dọn sạch: dòng `chat_sessions` script tạo đã xoá, tài khoản về nguyên trạng
+
+**Kiểm trình duyệt (chưa làm — chỉ React behavior):** panel trượt ra/đóng, stream hiển thị dần, F5 mở
+lại panel thấy lịch sử, "Xóa hội thoại", điều hướng prev/next reset đúng hội thoại. Backend + hợp đồng
+API đã verify tự động.
 
 ### #6 — Dashboard
 - [ ] Streak (từ `daily_activity`), BarChart câu hỏi theo tuần
@@ -279,6 +308,18 @@ Từ review #1b (đã triage, không chặn gì):
 - [ ] Ngưỡng 10 phút kẹt `processing` tính từ `uploaded_at` vì chưa có cột đánh dấu thời điểm bắt đầu xử lý.
 - [ ] Độ dài slug có thể vượt quá 80 ký tự đã tài liệu hoá một khi nối thêm `-{order_index}` và hậu tố
       `-N` (vô hại: cột DB là `text` không giới hạn).
+
+Từ review #5 (đã triage, không chặn merge — bối cảnh < 10 người, mỗi bài một user):
+- [ ] **Lost-update** khi hai POST `/api/chat/{lesson_id}` cùng bài chạy song song: mỗi request ghi đè
+      cả mảng `messages` theo `history` đọc lúc vào → lượt của request kết thúc sau nuốt lượt kia. Cần
+      atomic append hoặc advisory lock theo session (frontend `sending` guard đã chặn trong một panel).
+- [ ] Stream Gemini rỗng (0 chunk) để lại tin user mồ côi không có phản hồi → lượt sau `contents` thành
+      `[user, user]`. Xác suất thấp; nhánh này chưa có test. Cân nhắc lưu tin trợ giảng fallback hoặc
+      hoàn tác tin user khi reply rỗng.
+- [ ] `ChatPanel` khi đóng: các control con (textarea/nút) vẫn focus được (mới chỉ `aria-hidden`) — dùng
+      `inert` trên `<aside>` khi `!open` để chặn cả focus lẫn ARIA.
+- [ ] Nút "Xóa hội thoại" không `disabled` khi đang stream (bị chặn bằng early-return trong `reset()`,
+      nên bấm giữa chừng là no-op thầm lặng) — thêm `disabled={sending}` cho đúng affordance.
 
 ## Việc cần user (blocker)
 
