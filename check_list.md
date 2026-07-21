@@ -109,10 +109,51 @@ Plan: `docs/superpowers/plans/2026-07-19-upload-review-ui.md`
 `ready_for_review` không cần F5; poll dừng khi tab ẩn; thao tác gộp/bỏ/hoàn tác trên UI thật.
 Backend và hợp đồng API đã verify hết; phần còn lại là hành vi React.
 
-### #3 — Lessons UI
-- [ ] `/lessons` (list + tab lọc Chủ đề + checkbox Đã học → `lesson_progress`)
-- [ ] `/lessons/:slug` (render markdown + sidebar chat + câu hỏi tự luận)
-- Deps còn thiếu: thư viện render markdown; thêm Shadcn component khi cần
+### #3 — Lessons UI — ✅ XONG (2026-07-21, nhánh `feature/lessons-ui`)
+Spec: `docs/superpowers/specs/2026-07-20-lessons-ui-design.md`
+- [x] `app/routers/lessons.py`: `GET /api/lessons` (danh sách phẳng, sắp theo
+      `(source_file_name, order_index)`, `done` ghép từ `lesson_progress`), `GET
+      /api/lessons/{slug}` (tra theo `(user_id, slug)`, kèm `prev`/`next` trong cùng
+      `source_file_id`), `PUT /api/lessons/{id}/progress` (upsert `lesson_progress`
+      theo `(user_id, lesson_id)`) — theo đúng khuôn `_Repo` của `files.py`, mọi truy
+      vấn lọc `user_id` tường minh, bài của người khác → 404 (không 403)
+- [x] Trang `/lessons`: gom bài theo `source_file_id` (nhóm mồ côi → "Khác", xếp
+      cuối), tiến độ `x/y`, bộ lọc Tất cả/Chưa học/Đã học lọc phía client
+- [x] Trang `/lessons/:slug`: render `content_md` bằng `react-markdown` +
+      `remark-gfm` trong `<article class="prose">`, checkbox "Đã học" cập nhật lạc
+      quan, điều hướng chương trước/sau (ẩn ở đầu/cuối file)
+- [x] **D20** — nhóm theo file nguồn (`source_file_id`) chứ không theo `topic`/`week`
+      vì hai cột đó luôn NULL (`_build_lesson_rows` không ghi); không cần migration
+- [x] **D21** — dữ liệu đi qua backend (`routers/lessons.py`), không đọc thẳng
+      Supabase bằng anon key, để #4a/#5/#6 mở rộng cùng một router
+- [x] **D22** — backend trả mảng phẳng, gom nhóm là việc của frontend
+- [x] **D23** — `react-markdown` giữ mặc định không render HTML thô (không
+      `rehype-raw`); thêm `remark-gfm` + `@tailwindcss/typography` (khai báo qua
+      `@plugin` vì dự án dùng Tailwind v4)
+- [x] `backend` pytest 173/173 xanh, output sạch (gồm `test_lessons_api.py`,
+      `test_lessons_repo.py`)
+- Deps mới: `react-markdown`, `remark-gfm`, `@tailwindcss/typography` (frontend);
+      không thêm dependency backend
+
+**Verify thật (2026-07-21, `backend/scripts/verify_3.py` — HTTP thật + Supabase thật, session
+mint trong tiến trình):**
+- [x] `GET /api/lessons` → 5 bài thật, cả 5 gom đúng dưới một file nguồn
+      (`FC36_BaoCao_DoAn - DHMT.docx`), `done=False`
+- [x] `GET /api/lessons/{slug}` chương đầu → 19370 ký tự, `content_md` **khớp đúng dòng DB** (so
+      trực tiếp với `/rest/v1/lessons`, không để bug tự khớp với chính nó), `prev=None`,
+      `next` trỏ đúng chương `#1`
+- [x] `PUT` progress `done=true` → `{done:true, completed_at:'2026-07-21T02:46:11+00:00'}`;
+      `done=false` → `{done:false, completed_at:null}`
+- [x] **RLS thật:** anon key đọc `lesson_progress` ra **0 dòng**
+- [x] Dọn sạch: dòng `lesson_progress` script tạo đã xoá, tài khoản về nguyên trạng
+
+**Kiểm trình duyệt (2026-07-21, thủ công):** render markdown bài `.docx` đã cắt, ba bộ lọc đổi danh
+sách, cập nhật lạc quan của checkbox (bền qua F5) và điều hướng prev/next — tất cả OK. Backend và hợp
+đồng API đã verify tự động.
+
+> **Nợ nhỏ (không chặn):** `verify_3.py` in tiêu đề chương tiếng Việt ra stdout, nên trên console
+> Windows (cp1252) phải chạy kèm `PYTHONIOENCODING=utf-8`; và script cần `SUPABASE_ANON_KEY` trong
+> môi trường (backend/.env chỉ có service-role — anon key nằm ở `frontend/.env.local`).
 
 ### #4a — Sinh câu hỏi bằng AI (MỚI, thay cho parse callout — D13)
 - [ ] Migration `0006`: thêm `questions.user_id` + RLS `auth.uid() = user_id`

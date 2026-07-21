@@ -156,5 +156,8 @@ lời gọi API hỏng — triệu chứng là "Không kết nối được máy
 ## Trạng thái hiện tại
 
 **Sub-project #0 (Foundation + Auth) — XONG**, verify end-to-end thật và đã merge vào `main`.
+**Sub-project #3 (Lessons UI) — XONG** (nhánh `feature/lessons-ui`): `/lessons` là nơi đọc bài
+(danh sách + đọc + đánh dấu "Đã học"). `lessons.topic`/`lessons.week` vẫn NULL nên phân nhóm đi
+theo file nguồn (`source_file_id`), không theo chủ đề — xem D20.
 Việc được chia thành các sub-project độc lập (#0–#8), mỗi cái có spec → plan → build riêng.
 Xem `check_list.md` để biết đã/đang/sẽ làm gì.

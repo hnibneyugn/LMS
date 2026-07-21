@@ -99,9 +99,14 @@ export function Files() {
     <div className="mx-auto max-w-3xl space-y-6 p-8">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Tài liệu của tôi</h1>
-        <Link to="/" className="text-sm text-gray-500 underline">
-          Trang chủ
-        </Link>
+        <div className="space-x-4 text-sm text-gray-500">
+          <Link to="/lessons" className="underline">
+            Bài học
+          </Link>
+          <Link to="/" className="underline">
+            Trang chủ
+          </Link>
+        </div>
       </div>
 
       <UploadDropzone onUploaded={refresh} />
