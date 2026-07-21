@@ -109,7 +109,15 @@ def chat(
 
     session = repo.get_session(user.user_id, lesson_id)
     if session is None:
-        session = repo.create_session(user.user_id, lesson_id)
+        try:
+            session = repo.create_session(user.user_id, lesson_id)
+        except Exception:
+            # Lost a race with a concurrent first message (unique index on
+            # (user_id, lesson_id)): the other request created the row. Read it
+            # back instead of surfacing a raw error.
+            session = repo.get_session(user.user_id, lesson_id)
+            if session is None:
+                raise
     history = session["messages"]
     session_id = session["id"]
     user_msg = {"role": "user", "content": message}
@@ -139,7 +147,9 @@ def chat(
         except ChatError:
             # Mid-stream failure: the body already started, so we cannot change
             # the status. Stop quietly; the partial reply is still saved below.
-            logger.exception("Gemini chat stream failed mid-way")
+            # stream_socratic_reply already logged the traceback -- avoid a
+            # second one for the same incident.
+            logger.warning("Gemini chat stream failed mid-way; saving partial reply")
         text = "".join(parts).strip()
         if text:
             repo.update_messages(

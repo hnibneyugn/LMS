@@ -73,6 +73,40 @@ def test_post_streams_reply_and_persists_both_messages(repo, monkeypatch):
     ]
 
 
+def test_post_handles_create_session_race(repo, monkeypatch):
+    # Simulate the unique-index race from migration 0008: get_session sees no
+    # row yet, create_session loses the race (unique-violation because another
+    # request already inserted), and the fallback re-read finds that row.
+    repo.sessions = [
+        {"id": "s-raced", "user_id": USER_ID, "lesson_id": "l1", "messages": []}
+    ]
+    real_get_session = repo.get_session
+    calls = {"n": 0}
+
+    def flaky_get_session(user_id, lesson_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None  # first look: the other writer hasn't committed yet
+        return real_get_session(user_id, lesson_id)
+
+    def raising_create_session(user_id, lesson_id):
+        raise Exception("duplicate key value violates unique constraint")
+
+    monkeypatch.setattr(repo, "get_session", flaky_get_session)
+    monkeypatch.setattr(repo, "create_session", raising_create_session)
+    monkeypatch.setattr(chat_router, "stream_socratic_reply", _fake_stream_ok)
+
+    res = client.post("/api/chat/l1", json={"message": "Giải thích X"}, headers=auth_headers())
+
+    assert res.status_code == 200
+    assert res.text == "Bạn nghĩ sao?"
+    saved = real_get_session(USER_ID, "l1")["messages"]
+    assert saved == [
+        {"role": "user", "content": "Giải thích X"},
+        {"role": "assistant", "content": "Bạn nghĩ sao?"},
+    ]
+
+
 def test_post_empty_message_is_422(repo):
     res = client.post("/api/chat/l1", json={"message": "   "}, headers=auth_headers())
     assert res.status_code == 422

@@ -181,6 +181,7 @@ export function ChatPanel({
             }}
             disabled={sending}
             rows={2}
+            maxLength={4000}
             className="flex-1 resize-none rounded-md border p-2 text-sm"
             placeholder="Nhập câu hỏi… (Enter để gửi)"
           />
