@@ -189,11 +189,29 @@ session mint trong tiến trình, chạy trên bài `.docx` thật của tài kh
 > exists` vào `0007` và apply.
 
 
-### #4 — AI chấm điểm
-- [ ] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`
-- [ ] Lưu `quiz_attempts` + upsert `daily_activity`
-- [x] Model chat đã chốt: **`gemini-3.5-flash`** (2026-07-21)
-- `google-genai` **đã thêm** ở #4a (client dùng chung `app/ai/client.py`)
+### #4 — AI chấm điểm — ✅ XONG (2026-07-21)
+
+- [x] `POST /api/quiz/grade` — structured output Pydantic `{ score, missing_points[], comment }`,
+      lưu `quiz_attempts` (id/created_at mint ở backend), tăng `daily_activity` **mỗi câu 1 lần/ngày**
+- [x] `GET /api/quiz/attempts/{slug}` — attempt mới nhất mỗi câu (mở lại bài vẫn thấy điểm)
+- [x] `app/ai/grading.py` (`grade_answer`, structured output, clamp score [0,10], graceful degradation
+      → 502) + frontend: ô trả lời + "Nộp bài" + điểm/nhận xét/ý thiếu inline ở `ReviewQuestions`
+- [x] Model chat: **`gemini-3.5-flash`** · `google-genai` client dùng chung `app/ai/client.py`
+- [x] `backend` pytest 219/219 xanh, output sạch (test_grading/test_quiz_api/test_quiz_repo) ·
+      frontend `npm run build` + `oxlint` sạch · **không cần migration** (bảng + RLS đã có)
+
+**Verify thật (2026-07-21, `backend/scripts/verify_4.py` — HTTP thật + Gemini thật + Supabase thật,
+session mint trong tiến trình, trên câu hỏi thật của #4a):**
+- [x] `POST grade` → điểm hợp lệ 0–10 + `missing_points` (ý thật rút từ bài) + `comment` tiếng Việt
+      (câu trả lời thử nghiệm bị chấm **0.0** kèm ý còn thiếu — AI chấm đúng chất lượng)
+- [x] `daily_activity` hôm nay **0 → 1** ở lần chấm đầu; nộp lại **cùng câu** trong ngày → **giữ 1**
+      (đếm mỗi câu 1 lần/ngày hoạt động đúng)
+- [x] `GET attempts/{slug}` → trả **bản mới nhất** ("Nộp lại lần hai.")
+- [x] **RLS thật:** anon key đọc `quiz_attempts` và `daily_activity` đều ra **0 dòng**
+- [x] Dọn sạch: các dòng script tạo đã xoá, `daily_activity` hôm nay khôi phục nguyên trạng
+
+**Kiểm trình duyệt (chưa làm — chỉ React behavior):** nộp bài trên UI thật, F5 vẫn thấy điểm, "Làm lại".
+Backend + hợp đồng API đã verify tự động.
 
 ### #5 — Socratic Chatbot
 - [ ] `POST /api/chat/{lesson_id}` — `StreamingResponse`, sidebar cạnh lý thuyết
