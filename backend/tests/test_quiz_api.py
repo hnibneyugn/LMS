@@ -48,6 +48,19 @@ class _FakeRepo:
     def upsert_daily(self, values):
         self.daily[(values["user_id"], values["activity_date"])] = dict(values)
 
+    def get_lesson_by_slug(self, user_id, slug):
+        for row in self.lessons:
+            if row.get("slug") == slug and row["user_id"] == user_id:
+                return {"id": row["id"]}
+        return None
+
+    def list_lesson_question_ids(self, user_id, lesson_id):
+        return [
+            q["id"]
+            for q in self.questions
+            if q["user_id"] == user_id and q["lesson_id"] == lesson_id
+        ]
+
 
 def _question(qid="q1", user_id=USER_ID, lesson_id="l1"):
     return {
@@ -166,3 +179,47 @@ def test_grade_returns_502_when_grading_fails(fakes, monkeypatch):
 def test_grade_requires_a_token(fakes):
     res = client.post("/api/quiz/grade", json={"question_id": "q1", "user_answer": "x"})
     assert res.status_code == 401
+
+
+def test_attempts_returns_latest_per_question(fakes):
+    repo, _ = fakes
+    repo.lessons = [
+        {"id": "l1", "user_id": USER_ID, "content_md": "nd", "slug": "gt-0"}
+    ]
+    repo.questions = [_question("q1"), _question("q2")]
+    repo.attempts = [
+        {
+            "id": "a1", "user_id": USER_ID, "question_id": "q1", "user_answer": "cũ",
+            "ai_score": 4.0, "ai_feedback": {"missing_points": ["A"], "comment": "c1"},
+            "created_at": "2026-07-21T01:00:00+00:00",
+        },
+        {
+            "id": "a2", "user_id": USER_ID, "question_id": "q1", "user_answer": "mới",
+            "ai_score": 9.0, "ai_feedback": {"missing_points": [], "comment": "c2"},
+            "created_at": "2026-07-21T02:00:00+00:00",
+        },
+    ]
+
+    res = client.get("/api/quiz/attempts/gt-0", headers=auth_headers())
+
+    assert res.status_code == 200
+    body = res.json()
+    # q1 -> its latest attempt only; q2 -> no attempt, absent.
+    assert len(body) == 1
+    assert body[0]["question_id"] == "q1"
+    assert body[0]["user_answer"] == "mới"
+    assert body[0]["score"] == 9.0
+    assert body[0]["missing_points"] == []
+    assert body[0]["comment"] == "c2"
+
+
+def test_attempts_on_another_users_lesson_is_404(fakes):
+    repo, _ = fakes
+    repo.lessons = [{"id": "l1", "user_id": OTHER_USER_ID, "content_md": "x", "slug": "gt-0"}]
+
+    res = client.get("/api/quiz/attempts/gt-0", headers=auth_headers())
+    assert res.status_code == 404
+
+
+def test_attempts_requires_a_token(fakes):
+    assert client.get("/api/quiz/attempts/gt-0").status_code == 401

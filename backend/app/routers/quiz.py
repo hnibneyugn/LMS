@@ -196,3 +196,31 @@ def grade(body: GradeRequest, user: CurrentUser = Depends(get_current_user)):
         comment=result.comment,
         created_at=created_at,
     )
+
+
+@router.get("/attempts/{lesson_slug}", response_model=list[AttemptOut])
+def attempts(lesson_slug: str, user: CurrentUser = Depends(get_current_user)):
+    lesson = repo.get_lesson_by_slug(user.user_id, lesson_slug)
+    if lesson is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, LESSON_NOT_FOUND)
+
+    out: list[dict] = []
+    for question_id in repo.list_lesson_question_ids(user.user_id, lesson["id"]):
+        rows = repo.list_question_attempts(user.user_id, question_id)
+        if not rows:
+            continue
+        # created_at is a UTC ISO string (offset +00:00), so lexicographic max
+        # is chronological max -- the latest attempt.
+        latest = max(rows, key=lambda r: r["created_at"])
+        feedback = latest.get("ai_feedback") or {}
+        out.append(
+            {
+                "question_id": question_id,
+                "user_answer": latest["user_answer"],
+                "score": latest["ai_score"],
+                "missing_points": feedback.get("missing_points", []),
+                "comment": feedback.get("comment", ""),
+                "created_at": latest["created_at"],
+            }
+        )
+    return out

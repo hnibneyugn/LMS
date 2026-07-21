@@ -69,6 +69,23 @@ def test_daily_get_and_upsert_key_on_user_and_date(stores):
     assert repo.get_daily(OTHER_USER_ID, "2026-07-21") is None
 
 
+def test_list_lesson_question_ids_scoped_to_user_and_lesson(stores):
+    stores["questions"]["q1"] = {"id": "q1", "user_id": USER_ID, "lesson_id": "l1"}
+    stores["questions"]["q2"] = {"id": "q2", "user_id": USER_ID, "lesson_id": "l2"}
+    stores["questions"]["q9"] = {"id": "q9", "user_id": OTHER_USER_ID, "lesson_id": "l1"}
+    repo = quiz_router._Repo()
+
+    assert repo.list_lesson_question_ids(USER_ID, "l1") == ["q1"]
+
+
+def test_get_lesson_by_slug_scoped_to_user(stores):
+    stores["lessons"]["l1"] = {"id": "l1", "user_id": USER_ID, "slug": "gt-0"}
+    repo = quiz_router._Repo()
+
+    assert repo.get_lesson_by_slug(USER_ID, "gt-0")["id"] == "l1"
+    assert repo.get_lesson_by_slug(OTHER_USER_ID, "gt-0") is None
+
+
 def test_upsert_daily_keys_on_user_and_date_not_date_alone(stores):
     # Two users, same date -> two separate rows. If upsert_daily's on_conflict
     # dropped user_id (keyed on activity_date alone), the second upsert would
