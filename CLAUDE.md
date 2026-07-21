@@ -41,7 +41,9 @@ nội dung bài, chấm điểm + phản biện (Socratic). Cả nhóm chung m�
 | Ingest | User upload file → R2 (presigned) → extract → cắt chương → `lessons` |
 | Hosting | Frontend: Vercel (static build) · Backend: Koyeb (Docker) |
 
-> **Model chat = `gemini-2.5-flash`** (chốt 2026-07-21). Embedding model vẫn hoãn cùng RAG (D8).
+> **Model chat = `gemini-3.5-flash`** (chốt 2026-07-21; đổi từ `gemini-2.5-flash` cùng ngày — bản
+> 2.5 trả 404 "no longer available to new users" với API key mới, xác nhận qua verify #4a thật).
+> Embedding model vẫn hoãn cùng RAG (D8).
 
 ## Cấu trúc thư mục
 

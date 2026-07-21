@@ -78,3 +78,32 @@ export function groupLessons(lessons: Lesson[]): LessonGroup[] {
   }
   return [...groups.values()]
 }
+
+export type QuestionType = "recall" | "scenario" | "compare" | "explain"
+
+export interface ReviewQuestion {
+  id: string
+  type: QuestionType
+  question_text: string
+  order_index: number
+}
+
+/** Vietnamese badge label per question type. */
+export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
+  recall: "Ghi nhớ",
+  scenario: "Tình huống",
+  compare: "So sánh",
+  explain: "Giải thích",
+}
+
+/** Cached-or-generate: the backend generates on first call, then serves from DB. */
+export function getQuestions(slug: string): Promise<ReviewQuestion[]> {
+  return apiFetch(`/api/lessons/${encodeURIComponent(slug)}/questions`)
+}
+
+export function regenerateQuestions(slug: string): Promise<ReviewQuestion[]> {
+  return apiFetch(
+    `/api/lessons/${encodeURIComponent(slug)}/questions/regenerate`,
+    { method: "POST" },
+  )
+}

@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm"
 import { ApiError } from "@/lib/api"
 import { errorMessage } from "@/lib/files"
 import { getLesson, setLessonProgress, type LessonDetail } from "@/lib/lessons"
+import { ReviewQuestions } from "@/components/ReviewQuestions"
 
 export function LessonDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -119,6 +120,8 @@ export function LessonDetailPage() {
       <article className="prose prose-sm max-w-none">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{lesson.content_md}</ReactMarkdown>
       </article>
+
+      {slug && <ReviewQuestions slug={slug} />}
 
       <nav className="flex justify-between gap-4 border-t pt-4 text-sm">
         {lesson.prev ? (

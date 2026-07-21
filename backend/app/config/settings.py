@@ -42,3 +42,7 @@ def supabase_url() -> str:
 
 def supabase_service_role_key() -> str:
     return _required("SUPABASE_SERVICE_ROLE_KEY")
+
+
+def gemini_api_key() -> str:
+    return _required("GEMINI_API_KEY")
