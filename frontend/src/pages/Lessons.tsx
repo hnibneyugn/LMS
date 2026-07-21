@@ -91,6 +91,11 @@ export function Lessons() {
 
       {loading ? (
         <p className="py-8 text-center text-sm text-gray-500">Đang tải…</p>
+      ) : error ? (
+        // The banner above already explains the failure; showing the "you have
+        // no lessons yet" empty state next to it would contradict it (a failed
+        // fetch leaves `lessons` empty without meaning the user has none).
+        null
       ) : lessons.length === 0 ? (
         <p className="py-8 text-center text-sm text-gray-500">
           Chưa có bài học nào.{" "}
