@@ -33,6 +33,7 @@ export function AdminInvite() {
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
+    if (sending) return
     setFormError(null)
     setOk(null)
     setSending(true)
@@ -66,6 +67,7 @@ export function AdminInvite() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          disabled={sending}
         />
         <Button type="submit" disabled={sending || !email.trim()}>
           {sending ? "Đang mời…" : "Mời"}

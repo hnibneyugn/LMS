@@ -21,3 +21,10 @@ def test_me_flags_non_admin(monkeypatch):
 
 def test_me_requires_a_token():
     assert client.get("/api/me").status_code == 401
+
+
+def test_me_tolerates_unset_admin_email(monkeypatch):
+    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
+    resp = client.get("/api/me", headers=auth_headers(email="someone@else.com"))
+    assert resp.status_code == 200
+    assert resp.json()["is_admin"] is False
