@@ -63,7 +63,8 @@ def test_me_with_expired_token_is_401():
     assert res.status_code == 401
 
 
-def test_me_with_valid_token_returns_user():
+def test_me_with_valid_token_returns_user(monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAIL", "boss@example.com")
     tok = _token({"sub": "user-123", "email": "a@b.c", "aud": "authenticated"})
     res = client.get("/api/me", headers={"Authorization": f"Bearer {tok}"})
     assert res.status_code == 200
