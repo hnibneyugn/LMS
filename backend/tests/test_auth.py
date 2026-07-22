@@ -67,7 +67,7 @@ def test_me_with_valid_token_returns_user():
     tok = _token({"sub": "user-123", "email": "a@b.c", "aud": "authenticated"})
     res = client.get("/api/me", headers={"Authorization": f"Bearer {tok}"})
     assert res.status_code == 200
-    assert res.json() == {"user_id": "user-123", "email": "a@b.c"}
+    assert res.json() == {"user_id": "user-123", "email": "a@b.c", "is_admin": False}
 
 
 _probe = FastAPI()
