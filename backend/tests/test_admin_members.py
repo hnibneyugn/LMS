@@ -74,3 +74,12 @@ def test_invite_member_wraps_upstream_failure(monkeypatch):
     _fake_httpx(monkeypatch, users=[], post=post)
     with pytest.raises(members.InviteError):
         members.invite_member("new@x.com")
+
+
+def test_invite_member_wraps_transport_error_on_create(monkeypatch):
+    def post(json):
+        raise httpx.ConnectError("down")
+
+    _fake_httpx(monkeypatch, users=[], post=post)
+    with pytest.raises(members.InviteError):
+        members.invite_member("new@x.com")

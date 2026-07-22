@@ -69,16 +69,19 @@ def invite_member(email: str) -> dict:
         raise AlreadyMemberError(f"{email} đã là thành viên rồi.")
 
     base, headers = _base_and_headers()
-    res = httpx.post(
-        f"{base}/auth/v1/admin/users",
-        headers=headers,
-        json={
-            "email": email,
-            "email_confirm": True,
-            "user_metadata": {"password_set": False},
-        },
-        timeout=30,
-    )
+    try:
+        res = httpx.post(
+            f"{base}/auth/v1/admin/users",
+            headers=headers,
+            json={
+                "email": email,
+                "email_confirm": True,
+                "user_metadata": {"password_set": False},
+            },
+            timeout=30,
+        )
+    except httpx.HTTPError as err:
+        raise InviteError("Không mời được lúc này, thử lại sau.") from err
     if res.status_code not in (200, 201):
         raise InviteError("Không mời được lúc này, thử lại sau.")
     return _summarize(res.json())
