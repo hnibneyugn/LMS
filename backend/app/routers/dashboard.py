@@ -2,7 +2,8 @@
 
 The pure functions here take `today` explicitly so they are deterministic and
 timezone-agnostic; the route handler passes vn_today(). db.admin() bypasses RLS,
-so every _Repo query filters user_id explicitly (added in a later task)."""
+so every per-user _Repo query filters user_id explicitly; leaderboard() reads the
+aggregate view unfiltered (cross-user, non-sensitive counts only)."""
 
 from datetime import date, timedelta
 
