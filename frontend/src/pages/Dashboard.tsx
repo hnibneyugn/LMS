@@ -122,9 +122,7 @@ export function Dashboard() {
               <tr className="text-left text-gray-500">
                 <th className="py-1 pr-2">#</th>
                 <th className="py-1 pr-2">Tên</th>
-                <th className="py-1 pr-2 text-right">Ngày học</th>
-                <th className="py-1 pr-2 text-right">Bài xong</th>
-                <th className="py-1 text-right">Câu hỏi</th>
+                <th className="py-1 text-right">Ngày học</th>
               </tr>
             </thead>
             <tbody>
@@ -139,9 +137,7 @@ export function Dashboard() {
                     {row.display_name}
                     {row.is_me && <span className="ml-1 text-blue-600">(Bạn)</span>}
                   </td>
-                  <td className="py-1 pr-2 text-right">{row.active_days}</td>
-                  <td className="py-1 pr-2 text-right">{row.lessons_completed}</td>
-                  <td className="py-1 text-right">{row.total_questions_done}</td>
+                  <td className="py-1 text-right">{row.active_days}</td>
                 </tr>
               ))}
             </tbody>
