@@ -7,6 +7,7 @@ import { Lessons } from "@/pages/Lessons"
 import { LessonDetailPage } from "@/pages/LessonDetail"
 import { ReviewChapters } from "@/pages/ReviewChapters"
 import { Account } from "@/pages/Account"
+import { AdminInvite } from "@/pages/AdminInvite"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 
 export default function App() {
@@ -52,6 +53,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Account />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/invite"
+          element={
+            <ProtectedRoute>
+              <AdminInvite />
             </ProtectedRoute>
           }
         />

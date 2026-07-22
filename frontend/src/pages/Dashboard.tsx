@@ -12,6 +12,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { errorMessage } from "@/lib/files"
 import { getDashboardMe, getLeaderboard, type DashboardMe, type LeaderRow } from "@/lib/dashboard"
+import { getMe } from "@/lib/admin"
 import { Button } from "@/components/ui/button"
 
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
@@ -30,12 +31,14 @@ export function Dashboard() {
   const [meError, setMeError] = useState<string | null>(null)
   const [boardError, setBoardError] = useState<string | null>(null)
   const [signOutError, setSignOutError] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     supabase.auth
       .getUser()
       .then(({ data }) => setEmail(data.user?.email ?? null))
       .catch(() => setEmail(null))
+    getMe().then((me) => setIsAdmin(me.is_admin)).catch(() => setIsAdmin(false))
     getDashboardMe().then(setMe).catch((e) => setMeError(errorMessage(e)))
     getLeaderboard().then(setBoard).catch((e) => setBoardError(errorMessage(e)))
   }, [])
@@ -59,6 +62,7 @@ export function Dashboard() {
           {email && <p className="text-sm text-gray-500">{email}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
+          {isAdmin && <Button onClick={() => navigate("/admin/invite")}>Mời thành viên</Button>}
           <Button onClick={() => navigate("/lessons")}>Bài học</Button>
           <Button variant="outline" onClick={() => navigate("/files")}>
             Tài liệu của tôi
