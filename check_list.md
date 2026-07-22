@@ -277,8 +277,41 @@ trong tiến trình, seed 1 dòng `daily_activity` ngày VN rồi khôi phục n
 **Kiểm trình duyệt (chưa làm — chỉ React behavior):** render 3 thẻ + BarChart 7 cột + bảng xếp hạng
 tô đậm dòng mình, nav + đăng xuất, F5 giữ trang. Backend + hợp đồng API đã verify tự động.
 
-### #7 — `/admin/invite`
-- [ ] Endpoint chỉ admin (`ADMIN_EMAIL`) + trang thêm email thành viên
+### #7 — `/admin/invite` — ✅ XONG (2026-07-22, nhánh `feature/admin-invite`)
+Spec: `docs/superpowers/specs/2026-07-22-admin-invite-design.md`
+Plan: `docs/superpowers/plans/2026-07-22-admin-invite.md`
+- [x] Cổng admin: `settings.admin_email()` + dependency `require_admin` (so email JWT với
+      `ADMIN_EMAIL`, **không phân biệt hoa/thường**) — ranh giới bảo mật thật, mọi route
+      `/api/admin/*` phụ thuộc nó (non-admin → 403, thiếu token → 401). **Không tin frontend.**
+- [x] `GET /api/me` thêm cờ `is_admin` → frontend gác UI admin mà `ADMIN_EMAIL` **không lộ ra browser**
+- [x] `app/admin/members.py`: gọi Supabase Admin API — `invite_member` (payload y hệt
+      `scripts/invite_user.py`: `email_confirm:true` + `user_metadata.password_set:false`, **không
+      gửi email mời**), `list_members`, `find_member`; `AlreadyMemberError`/`InviteError`; `_summarize`
+      chỉ trả `{email, password_set, created_at}` (không lộ id/token)
+- [x] `app/routers/admin.py`: `POST /api/admin/invite` (422 email sai / 409 trùng / 502 upstream /
+      201 kèm member) + `GET /api/admin/members` (502 khi Admin API lỗi) — router mỏng, đều
+      `Depends(require_admin)`
+- [x] Trang `/admin/invite` (`AdminInvite.tsx`): gác `is_admin` từ `/api/me` → non-admin **redirect
+      `/` trước khi fetch/hiện member nào**; danh sách thành viên (email + "Đã/Chưa đặt mật khẩu") +
+      form mời (cập nhật lạc quan, dedupe theo email, lỗi tiếng Việt). Nút "Mời thành viên" trên
+      Dashboard **chỉ hiện với admin** (mặc định ẩn, không nhấp nháy)
+- [x] **Không cần migration** — chỉ thao tác trên Supabase Auth users, không đụng bảng ứng dụng
+- [x] `backend` pytest **278/278 xanh**, output sạch (`test_admin_members`, `test_admin_api`,
+      `test_me_api`, + `require_admin` trong `test_auth`) · frontend `npm run build` + `oxlint` sạch
+      (chỉ còn cảnh báo `button.tsx` fast-refresh có sẵn, không liên quan)
+
+**Verify thật (2026-07-22, `backend/scripts/verify_7.py` — HTTP thật + Supabase Auth thật, session
+admin mint trong tiến trình):**
+- [x] `POST /api/admin/invite` email dùng-một-lần → **201**, `password_set:false`; Admin API xác nhận
+      user tồn tại với `user_metadata.password_set == false`
+- [x] Mời lại cùng email → **409**
+- [x] `GET /api/admin/members` → có email vừa mời
+- [x] Non-admin → **403** (pytest `test_admin_api.py`; mint session non-admin thật cần tài khoản thứ
+      hai đã đặt mật khẩu nên để pytest gánh)
+- [x] Dọn sạch: xoá user dùng-một-lần qua Admin API, tổng user về **1** (nguyên trạng)
+
+**Kiểm trình duyệt (chưa làm — chỉ React behavior):** nút admin ẩn/hiện đúng vai, mời trên UI thật,
+redirect non-admin. Backend + hợp đồng API đã verify tự động.
 
 ### #8 — Deploy
 - [ ] Backend → Koyeb (Docker), keep-alive ping `/api/health` mỗi 10 phút
