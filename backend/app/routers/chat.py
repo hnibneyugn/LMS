@@ -103,7 +103,7 @@ def chat(
 ):
     message = body.message.strip()
     if not message:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, EMPTY_MESSAGE)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, EMPTY_MESSAGE)
 
     lesson = _require_lesson(user.user_id, lesson_id)
 

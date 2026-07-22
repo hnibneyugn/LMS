@@ -284,7 +284,7 @@ def get_questions(slug: str, user: CurrentUser = Depends(get_current_user)):
     content = lesson.get("content_md") or ""
     if not content.strip():
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Bài học không có nội dung để sinh câu hỏi.",
         )
 
@@ -316,7 +316,7 @@ def regenerate_questions(slug: str, user: CurrentUser = Depends(get_current_user
     content = lesson.get("content_md") or ""
     if not content.strip():
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Bài học không có nội dung để sinh câu hỏi.",
         )
 

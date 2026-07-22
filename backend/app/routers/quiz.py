@@ -139,7 +139,7 @@ def _attempt_date(attempt: dict):
 def grade(body: GradeRequest, user: CurrentUser = Depends(get_current_user)):
     answer = body.user_answer.strip()
     if not answer:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, EMPTY_ANSWER)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, EMPTY_ANSWER)
 
     question = repo.get_question(user.user_id, body.question_id)
     if question is None:
