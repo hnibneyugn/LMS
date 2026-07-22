@@ -29,3 +29,14 @@ def test_missing_gemini_api_key_raises_runtime_error(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         settings.gemini_api_key()
+
+
+def test_admin_email_is_read_from_env(monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAIL", "boss@example.com")
+    assert settings.admin_email() == "boss@example.com"
+
+
+def test_missing_admin_email_raises_runtime_error(monkeypatch):
+    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
+    with pytest.raises(RuntimeError, match="ADMIN_EMAIL"):
+        settings.admin_email()

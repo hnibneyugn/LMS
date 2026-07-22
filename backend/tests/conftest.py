@@ -21,9 +21,9 @@ def auth(monkeypatch):
     )
 
 
-def auth_headers(user_id: str = USER_ID) -> dict:
+def auth_headers(user_id: str = USER_ID, email: str = "a@b.c") -> dict:
     token = jwt.encode(
-        {"sub": user_id, "email": "a@b.c", "aud": "authenticated"},
+        {"sub": user_id, "email": email, "aud": "authenticated"},
         _PRIVATE_KEY,
         algorithm="ES256",
     )
