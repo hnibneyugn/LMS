@@ -3,7 +3,9 @@ import os
 from dataclasses import dataclass
 
 import jwt
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
+
+from app.config import settings
 
 
 @dataclass
@@ -61,3 +63,14 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
     token = authorization.removeprefix("Bearer ").strip()
     payload = _decode(token)
     return CurrentUser(user_id=payload["sub"], email=payload.get("email"))
+
+
+def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    """Allow only the configured ADMIN_EMAIL. The real authorization boundary
+    for every /api/admin/* route — never trust the frontend for this."""
+    admin = settings.admin_email().strip().lower()
+    if not user.email or user.email.strip().lower() != admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ admin mới được phép."
+        )
+    return user

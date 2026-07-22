@@ -46,3 +46,7 @@ def supabase_service_role_key() -> str:
 
 def gemini_api_key() -> str:
     return _required("GEMINI_API_KEY")
+
+
+def admin_email() -> str:
+    return _required("ADMIN_EMAIL")

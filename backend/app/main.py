@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import chat, dashboard, files, health, lessons, me, quiz
+from app.routers import admin, chat, dashboard, files, health, lessons, me, quiz
 
 load_dotenv()
 
@@ -23,6 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(admin.router)
 app.include_router(health.router)
 app.include_router(me.router)
 app.include_router(files.router)
