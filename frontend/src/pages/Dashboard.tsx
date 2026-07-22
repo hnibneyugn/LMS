@@ -32,7 +32,10 @@ export function Dashboard() {
   const [signOutError, setSignOutError] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null))
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setEmail(data.user?.email ?? null))
+      .catch(() => setEmail(null))
     getDashboardMe().then(setMe).catch((e) => setMeError(errorMessage(e)))
     getLeaderboard().then(setBoard).catch((e) => setBoardError(errorMessage(e)))
   }, [])
@@ -111,6 +114,8 @@ export function Dashboard() {
           <p className="text-sm text-red-600">Không tải được bảng xếp hạng: {boardError}</p>
         ) : !board ? (
           <p className="text-sm text-gray-500">Đang tải…</p>
+        ) : board.length === 0 ? (
+          <p className="text-sm text-gray-500">Chưa có ai trong bảng xếp hạng.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -126,10 +131,14 @@ export function Dashboard() {
               {board.map((row, i) => (
                 <tr
                   key={row.user_id}
-                  className={row.is_me ? "rounded bg-blue-50 font-medium" : ""}
+                  aria-current={row.is_me ? "true" : undefined}
+                  className={row.is_me ? "bg-blue-50 font-medium" : ""}
                 >
                   <td className="py-1 pr-2">{i + 1}</td>
-                  <td className="py-1 pr-2">{row.display_name}</td>
+                  <td className="py-1 pr-2">
+                    {row.display_name}
+                    {row.is_me && <span className="ml-1 text-blue-600">(Bạn)</span>}
+                  </td>
                   <td className="py-1 pr-2 text-right">{row.active_days}</td>
                   <td className="py-1 pr-2 text-right">{row.lessons_completed}</td>
                   <td className="py-1 text-right">{row.total_questions_done}</td>
