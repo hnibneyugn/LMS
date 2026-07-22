@@ -246,14 +246,36 @@ session mint trong tiến trình, trên bài `.docx` thật của tài khoản a
 lại panel thấy lịch sử, "Xóa hội thoại", điều hướng prev/next reset đúng hội thoại. Backend + hợp đồng
 API đã verify tự động.
 
-### #6 — Dashboard
-- [ ] Streak (từ `daily_activity`), BarChart câu hỏi theo tuần
-- [ ] % hoàn thành bài học
-- [ ] Leaderboard xếp theo **số ngày học** (count distinct `daily_activity.activity_date`),
-      không xếp theo điểm — cần sửa `leaderboard_view` (migration mới). Xếp theo **giờ học**
-      tạm hoãn: web không có cách đo thời gian đáng tin (heartbeat, tab bỏ quên) — xem D15
-- [ ] Thay Home placeholder bằng dashboard thật (kèm logout tử tế)
-- Deps còn thiếu: Tremor (hoặc Recharts)
+### #6 — Dashboard — ✅ XONG (2026-07-22, nhánh `feature/dashboard`)
+Spec: `docs/superpowers/specs/2026-07-22-dashboard-design.md`
+Plan: `docs/superpowers/plans/2026-07-22-dashboard.md`
+- [x] Streak (từ `daily_activity`) + BarChart câu hỏi **7 ngày gần nhất** (mỗi ngày 1 cột, zero-fill)
+- [x] % hoàn thành bài học (`lesson_progress` done / tổng `lessons` của user)
+- [x] Leaderboard xếp theo **số ngày học** (`count(distinct daily_activity.activity_date)`),
+      không xếp theo điểm — migration `0009` thêm `active_days` cho `leaderboard_view` **và sửa
+      lỗi fan-out** của `0004` (join hai bảng riêng tư trong một truy vấn làm `sum(questions_done_count)`
+      bị nhân theo số bài done). Xếp theo **giờ học** vẫn hoãn (D15). Xem D-dash-1/D-dash-4.
+- [x] Thay Home placeholder bằng `Dashboard.tsx` thật, **logout tử tế** (bắt lỗi `signOut()`, không nuốt)
+- [x] `app/routers/dashboard.py`: `GET /api/dashboard/me` (streak hiện tại + dài nhất, weekly 7
+      ngày, completion; lọc `user_id` tường minh) và `GET /api/dashboard/leaderboard` (đọc
+      `leaderboard_view`, gắn `is_me`) — theo khuôn `_Repo` của `quiz.py`
+- [x] **D-dash-2** Recharts (không Tremor — Tailwind v4 + React 19); dep mới `recharts`
+- [x] **D-dash-5** Mốc ngày = **giờ VN (UTC+7)** qua helper chung `app/util/dates.py`
+      (`vn_today`/`vn_date_of`); `quiz.py` (#4) đổi bucket `daily_activity` từ UTC sang ngày VN.
+      Streak reset khi qua 0h VN mà chưa học. `created_at` vẫn lưu UTC.
+- [x] Dọn nợ kèm theo: `Home.handleSignOut` nuốt lỗi → đã sửa ở `Dashboard.tsx` (nợ kỹ thuật cũ)
+- [x] `backend` pytest 256/256 xanh, output sạch (`test_dates`, `test_dashboard_stats`,
+      `test_dashboard_api`, `test_dashboard_repo`) · frontend `npm run build` + `oxlint` sạch
+
+**Verify thật (2026-07-22, `backend/scripts/verify_6.py` — HTTP thật + Supabase thật, session mint
+trong tiến trình, seed 1 dòng `daily_activity` ngày VN rồi khôi phục nguyên trạng):**
+- [x] `GET /api/dashboard/me` → `current_streak=1`, `longest_streak=1`, `weekly_questions` **đúng 7
+      ngày** cột cuối = hôm nay = 3, `completion_pct=9` (1/11 bài)
+- [x] `GET /api/dashboard/leaderboard` → 1 dòng, `is_me=true`, `active_days=1`
+- [x] Dọn sạch: dòng `daily_activity` seed đã xoá, tài khoản về nguyên trạng
+
+**Kiểm trình duyệt (chưa làm — chỉ React behavior):** render 3 thẻ + BarChart 7 cột + bảng xếp hạng
+tô đậm dòng mình, nav + đăng xuất, F5 giữ trang. Backend + hợp đồng API đã verify tự động.
 
 ### #7 — `/admin/invite`
 - [ ] Endpoint chỉ admin (`ADMIN_EMAIL`) + trang thêm email thành viên
@@ -281,8 +303,8 @@ Chỉ làm khi nhóm thật sự cần. Bảng `user_files`/`document_chunks` đ
 - [ ] `backend/app/dependencies/auth.py`: `payload["sub"]` truy cập trực tiếp → `KeyError`→500 nếu
       token hợp lệ mà thiếu `sub` (không xảy ra với token Supabase thật). Cân nhắc `.get()` + 401.
 - [ ] JWKS fetch lỗi mạng đang trả 401; đúng ra nên 503 (lỗi phía server, không phải lỗi client).
-- [ ] `frontend/src/pages/Home.tsx`: `handleSignOut` nuốt lỗi `signOut()` — Home là placeholder, sẽ
-      thay ở #6, nhớ làm tử tế lúc đó.
+- [x] ~~`frontend/src/pages/Home.tsx`: `handleSignOut` nuốt lỗi `signOut()`~~ — đã xử lý ở #6:
+      `Home.tsx` bị thay bằng `Dashboard.tsx`, logout nay bắt lỗi và báo tiếng Việt.
 - [ ] `backend/pytest.ini` đang suppress `StarletteDeprecationWarning` (dep transitive) — xem lại khi
       nâng dependency.
 - [ ] `lucide-react` chưa được import ở đâu (giữ lại vì Shadcn sẽ cần khi thêm component ở #3).

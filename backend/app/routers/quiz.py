@@ -1,7 +1,7 @@
 """Grading free-text answers to review questions (#4).
 
 quiz_attempts is immutable history (insert only). daily_activity increments
-once per question per UTC day. db.admin() bypasses RLS, so every query filters
+once per question per VN calendar day. db.admin() bypasses RLS, so every query filters
 user_id explicitly and another user's question/lesson is 404, never 403.
 """
 
@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app import db
 from app.ai.grading import GradingError, grade_answer
 from app.dependencies.auth import CurrentUser, get_current_user
+from app.util.dates import vn_date_of, vn_today
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
@@ -131,8 +132,8 @@ repo = _Repo()
 
 
 def _attempt_date(attempt: dict):
-    """UTC date of an attempt's created_at (ISO string with offset)."""
-    return datetime.fromisoformat(attempt["created_at"]).astimezone(timezone.utc).date()
+    """VN calendar date of an attempt's created_at (ISO string with offset)."""
+    return vn_date_of(attempt["created_at"])
 
 
 @router.post("/grade", response_model=GradeOut)
@@ -158,7 +159,7 @@ def grade(body: GradeRequest, user: CurrentUser = Depends(get_current_user)):
 
     # Count attempts BEFORE inserting -- otherwise the new row makes the count
     # >=1 and questions_done_count would never increment.
-    today = datetime.now(timezone.utc).date()
+    today = vn_today()
     prior = repo.list_question_attempts(user.user_id, body.question_id)
     first_today = not any(_attempt_date(a) == today for a in prior)
 

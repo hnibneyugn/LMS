@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { Login } from "@/pages/Login"
 import { AuthCallback } from "@/pages/AuthCallback"
-import { Home } from "@/pages/Home"
+import { Dashboard } from "@/pages/Dashboard"
 import { Files } from "@/pages/Files"
 import { Lessons } from "@/pages/Lessons"
 import { LessonDetailPage } from "@/pages/LessonDetail"
@@ -59,7 +59,7 @@ export default function App() {
           path="/*"
           element={
             <ProtectedRoute>
-              <Home />
+              <Dashboard />
             </ProtectedRoute>
           }
         />
