@@ -1,7 +1,7 @@
 """Grading free-text answers to review questions (#4).
 
 quiz_attempts is immutable history (insert only). daily_activity increments
-once per question per UTC day. db.admin() bypasses RLS, so every query filters
+once per question per VN calendar day. db.admin() bypasses RLS, so every query filters
 user_id explicitly and another user's question/lesson is 404, never 403.
 """
 
@@ -12,9 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app import db
-from app.util.dates import vn_date_of, vn_today
 from app.ai.grading import GradingError, grade_answer
 from app.dependencies.auth import CurrentUser, get_current_user
+from app.util.dates import vn_date_of, vn_today
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
