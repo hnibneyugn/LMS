@@ -16,6 +16,10 @@ học**. Đây là màn hình đầu tiên user thấy sau khi đăng nhập (`/
 - **BarChart câu hỏi theo tuần = 7 ngày gần nhất, mỗi ngày 1 cột** (hôm nay lùi về 6 ngày trước).
   Ngày không có hoạt động → cột 0 (zero-fill).
 - **Streak = streak hiện tại + streak dài nhất.** Đều tính từ `daily_activity.activity_date`.
+  **Streak hiện tại phải kết thúc đúng hôm nay** — qua 0h (giờ VN) mà chưa học là mất (reset 0).
+- **Mốc ngày = giờ Việt Nam (UTC+7)**, áp dụng ở **cả nơi ghi lẫn nơi đọc**. Hệ quả: `quiz.py`
+  (#4) đang ghi `daily_activity.activity_date` theo ngày UTC sẽ đổi sang **ngày VN**, qua một
+  helper dùng chung, để streak/biểu đồ khớp đúng dòng đã lưu quanh nửa đêm.
 - **Dữ liệu đi qua backend (D21).** Frontend không đọc thẳng Supabase; thêm router
   `dashboard.py`. Kể cả leaderboard cũng đọc `leaderboard_view` phía server để đồng nhất.
 - **Xếp hạng theo số ngày học** (`count(distinct activity_date)`), KHÔNG theo điểm (D-dash-1;
@@ -26,8 +30,9 @@ học**. Đây là màn hình đầu tiên user thấy sau khi đăng nhập (`/
 
 - Nhóm < 10 người, invite-only. Bảng riêng tư bảo vệ bằng RLS `auth.uid() = user_id`.
 - `daily_activity` (đã có): `(user_id, activity_date date, questions_done_count int)`. `quiz.py`
-  ghi `activity_date` theo **ngày UTC** (`datetime.now(timezone.utc).date()`) và tăng
-  `questions_done_count` **mỗi câu 1 lần/ngày**. Streak/biểu đồ đọc lại đúng theo ngày UTC đó.
+  hiện ghi `activity_date` theo **ngày UTC** và tăng `questions_done_count` **mỗi câu 1 lần/ngày**.
+  Spec này đổi nơi ghi sang **ngày VN (UTC+7)** để nhất quán với streak/biểu đồ (xem §0).
+- Giờ Việt Nam là **UTC+7 cố định, không DST** → offset tĩnh, không cần thư viện tz.
 - `lesson_progress` (đã có): `(user_id, lesson_id, status 'done'|'not_done', completed_at)`.
 - `lessons.user_id` có thật (migration `0006`) → "tổng bài" đếm theo user.
 - `leaderboard_view` (migration `0004`) hiện có `lessons_completed`, `total_questions_done`,
@@ -39,11 +44,35 @@ học**. Đây là màn hình đầu tiên user thấy sau khi đăng nhập (`/
 Một router backend mỏng + một trang frontend + một migration sửa view.
 
 ```
+backend/app/util/dates.py          # VN_TZ (UTC+7) + vn_today() — nguồn duy nhất "ngày ứng dụng"
 backend/app/routers/dashboard.py   # /api/dashboard/me, /api/dashboard/leaderboard
+backend/app/routers/quiz.py        # SỬA: ghi daily_activity theo ngày VN (dùng vn_today)
 supabase/migrations/0009_leaderboard_active_days.sql
 frontend/src/pages/Dashboard.tsx   # thay Home.tsx tại "/"
 frontend/src/lib/dashboard.ts      # wrapper apiFetch (kiểu TS cho payload)
 ```
+
+### 0. Helper ngày VN — `app/util/dates.py`
+
+Nguồn chân lý duy nhất cho "ngày ứng dụng":
+
+```python
+from datetime import date, datetime, timedelta, timezone
+
+VN_TZ = timezone(timedelta(hours=7))          # UTC+7, không DST
+
+def vn_today() -> date:
+    return datetime.now(VN_TZ).date()
+
+def vn_date_of(iso_ts: str) -> date:          # 'ngày VN' của một ISO timestamp có offset
+    return datetime.fromisoformat(iso_ts).astimezone(VN_TZ).date()
+```
+
+`quiz.py` (#4) đổi sang dùng `vn_today()` khi ghi `daily_activity.activity_date`, và dùng
+`vn_date_of(created_at)` cho phép kiểm "câu này đã làm hôm nay chưa" (thay `_attempt_date` hiện
+convert sang UTC). Nhờ vậy "một câu / một ngày" và streak/biểu đồ cùng một khái niệm "ngày VN".
+Không migration: cột `activity_date` vẫn là `date`, chỉ đổi giá trị được ghi từ nay về sau (dữ
+liệu #4 lúc verify đã dọn sạch; quy mô nhóm nhỏ nên vài dòng cũ lệch — nếu có — không đáng kể).
 
 ### 1. Backend — `routers/dashboard.py`
 
@@ -69,14 +98,15 @@ khác không lộ. Prefix `/api/dashboard`, cả hai route `Depends(get_current_
 ```
 
 - **Streak** tính trong Python từ tập `distinct activity_date` (chỉ những ngày có dòng
-  `daily_activity` — tức có làm ít nhất 1 câu; đây là đơn vị "ngày học" nhất quán với leaderboard):
-  - `current_streak`: số ngày liên tiếp kết thúc ở **hôm nay hoặc hôm qua** (UTC). Nếu ngày gần
-    nhất < hôm qua → 0. (Cho phép "hôm qua" để streak không rớt ngay đầu ngày khi chưa kịp học.)
+  `daily_activity` — tức có làm ít nhất 1 câu; đây là đơn vị "ngày học" nhất quán với leaderboard).
+  Mọi so sánh dùng **ngày VN** qua `vn_today()`:
+  - `current_streak`: số ngày liên tiếp **kết thúc đúng hôm nay** (VN). Nếu ngày gần nhất ≠ hôm
+    nay → 0 (qua 0h chưa học là mất — theo yêu cầu). Đếm ngược từ hôm nay, ngắt khi hụt 1 ngày.
   - `longest_streak`: run liên tiếp dài nhất trong toàn bộ lịch sử.
   - Tính bằng cách sắp ngày tăng dần, duyệt, ngắt run khi khoảng cách > 1 ngày. Không dùng SQL
     window function để giữ logic ở một chỗ, dễ test đơn vị.
 - **weekly_questions**: lấy các dòng `daily_activity` trong 7 ngày gần nhất, map theo `date`, rồi
-  zero-fill đủ 7 ngày (hôm nay − 6 … hôm nay). Mốc "hôm nay" = ngày UTC (khớp cách ghi).
+  zero-fill đủ 7 ngày (hôm nay − 6 … hôm nay). Mốc "hôm nay" = `vn_today()` (khớp cách ghi mới).
 - **Bài học**: `lessons_total = count(lessons where user_id)`;
   `lessons_completed = count(lesson_progress where user_id and status='done')`.
   `completion_pct = round(100 * completed / total)` (0 nếu total = 0).
@@ -171,12 +201,16 @@ Bố cục (một cột, `max-w-…` như các trang khác, tiếng Việt toàn
 
 ## Kiểm thử
 
-**Backend `pytest`** (phải xanh + output sạch):
-- `test_dashboard_repo.py`: logic thuần —
-  - streak: chuỗi liền hôm nay → `current` đúng; kết ở hôm qua → vẫn tính; kết < hôm qua → 0;
-    `longest` là run dài nhất; tập rỗng → cả hai = 0; một ngày duy nhất = hôm nay → 1/1.
+**Backend `pytest`** (phải xanh + output sạch — gồm cả **cập nhật test #4** `test_quiz_*` cho mốc
+ngày VN: các test đang gắn ngày UTC vào `daily_activity` phải đổi kỳ vọng sang `vn_today()`):
+- `test_dashboard_repo.py`: logic thuần (inject "hôm nay" để test tất định, không phụ giờ chạy) —
+  - streak: chuỗi liền kết đúng hôm nay → `current` đúng; **kết ở hôm qua → `current`=0** (qua 0h
+    mất); kết < hôm nay → 0; `longest` là run dài nhất kể cả khi `current`=0; tập rỗng → 0/0; một
+    ngày = hôm nay → 1/1.
   - weekly zero-fill: đúng 7 phần tử, thứ tự cũ→mới, ngày trống = 0, khớp count ngày có dữ liệu.
   - completion: total=0 → 0%; làm tròn đúng.
+  - `vn_today`/`vn_date_of`: một timestamp 6h sáng VN (23h UTC hôm trước) → ngày VN là hôm nay,
+    không phải hôm qua (chốt đúng biên UTC+7).
 - `test_dashboard_api.py`: hai endpoint qua `TestClient` với `_Repo` fake (như các test router
   khác) — shape payload, `is_me` gắn đúng, thứ tự xếp hạng theo `active_days` giảm dần + tie-break,
   401 khi thiếu auth.
@@ -209,3 +243,5 @@ trình, HTTP thật + Supabase thật):
 - **D-dash-2** Recharts thay Tremor vì Tailwind v4 + React 19.
 - **D-dash-3** Dữ liệu dashboard qua backend (D21); leaderboard cũng đọc view phía server.
 - **D-dash-4** Sửa fan-out của `leaderboard_view` (0004) bằng subquery tổng hợp riêng từng bảng.
+- **D-dash-5** Mốc ngày = **giờ VN (UTC+7)**, thống nhất cả nơi ghi (`quiz.py` #4 dùng `vn_today`)
+  lẫn nơi đọc; streak hiện tại reset về 0 khi qua 0h VN mà chưa học.
