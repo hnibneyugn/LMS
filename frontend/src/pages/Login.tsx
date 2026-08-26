@@ -11,7 +11,7 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const [newPassword, setNewPassword] = useState("")
   const [newPassword2, setNewPassword2] = useState("")
-  const [state, setState] = useState<"idle" | "error">("idle")
+  const [state, setState] = useState<"idle" | "error" | "notice">("idle")
   // Separate from `state` on purpose: a wrong code must set an error WITHOUT
   // collapsing the code form the user is standing in.
   const [linkSent, setLinkSent] = useState(false)
@@ -193,7 +193,26 @@ export function Login() {
         )
         return
       }
-      setHasSession(true)
+      // Deliberately do NOT enter the app on the OTP-created session. Drop it
+      // and send the member back to the password form so they sign in once
+      // with the password they just chose -- it proves the password works and
+      // that they remember it before they get in. Email stays filled in.
+      const wasReset = otpPurpose === "reset"
+      await supabase.auth.signOut()
+      setHasSession(false)
+      setMustSetPassword(false)
+      setLinkSent(false)
+      setCode("")
+      setPassword("")
+      setNewPassword("")
+      setNewPassword2("")
+      setOtpPurpose("login")
+      setState("notice")
+      setMessage(
+        wasReset
+          ? "Đã đổi mật khẩu. Đăng nhập lại bằng mật khẩu mới."
+          : "Đã đặt mật khẩu. Đăng nhập bằng mật khẩu vừa tạo để vào.",
+      )
     } catch (err) {
       console.error("updateUser threw", err)
       setState("error")
@@ -204,7 +223,12 @@ export function Login() {
   }
 
   if (checking) return null
-  if (hasSession) return <Navigate to="/" replace />
+  // Guard on mustSetPassword too: verifyOtp creates a session, which trips the
+  // onAuthStateChange listener above and flips hasSession true. Without this
+  // guard that redirect would fire before the forced set-password screen ever
+  // renders, letting a just-invited member (or a password reset) slip into the
+  // app without actually setting a password.
+  if (hasSession && !mustSetPassword) return <Navigate to="/" replace />
 
   return (
     <div className="mx-auto max-w-sm p-8">
@@ -306,22 +330,29 @@ export function Login() {
             {busy ? "Đang đăng nhập…" : "Đăng nhập"}
           </Button>
           {state === "error" && <p className="text-sm text-red-600">{message}</p>}
-          <div className="space-y-1 pt-2 text-center text-sm">
-            <button
-              type="button"
-              // The way in for a member who was just invited and has no
-              // password at all -- they cannot use the form above yet.
-              onClick={() => handleMagicLink("login")}
-              disabled={busy || !email}
-              className="block w-full text-gray-600 underline disabled:opacity-50"
-            >
-              Chưa có mật khẩu? Gửi mã qua email
-            </button>
+          {state === "notice" && <p className="text-sm text-green-700">{message}</p>}
+          <div className="space-y-2 pt-3 text-sm">
+            <div className="rounded-md border border-border p-3">
+              <p className="mb-2 text-muted-foreground">
+                Lần đầu đăng nhập, chưa có mật khẩu? Nhận mã qua email rồi đặt mật khẩu.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                // The way in for a member who was just invited and has no
+                // password at all -- they cannot use the form above yet.
+                onClick={() => handleMagicLink("login")}
+                disabled={busy || !email}
+              >
+                Gửi mã qua email
+              </Button>
+            </div>
             <button
               type="button"
               onClick={() => handleMagicLink("reset")}
               disabled={busy || !email}
-              className="block w-full text-gray-600 underline disabled:opacity-50"
+              className="block w-full text-center text-muted-foreground underline disabled:opacity-50"
             >
               Quên mật khẩu? Đặt lại bằng mã qua email
             </button>
